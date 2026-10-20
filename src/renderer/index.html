@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interview Copilot Stealth Overlay</title>
+    <link rel="stylesheet" href="./styles/main.css" />
+    <!-- Highlight.js dark theme -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
+  </head>
+  <body>
+    <div class="hud-window">
+      <!-- Stealth Header / Titlebar -->
+      <header class="hud-header">
+        <div class="brand-section">
+          <div class="brand-logo">IC</div>
+          <span class="brand-title">STEALTH COPILOT</span>
+          <div class="stealth-badge" title="Protected via setContentProtection(true). Invisible to Zoom, Teams, Meet, Slack, and OBS.">
+            <span class="pulse-dot"></span>
+            <span>STEALTH ACTIVE</span>
+          </div>
+        </div>
+
+        <div class="header-controls">
+          <button id="btn-passthrough" class="icon-btn" title="Toggle Click-Through / Mouse Pass-Through (⌘⇧M)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+          </button>
+          <button id="btn-settings" class="icon-btn" title="Settings & Hotkeys">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+          <button id="btn-minimize" class="icon-btn" title="Minimize">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button id="btn-close" class="icon-btn danger" title="Close Window">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Dynamic Status Chips & VU Meter -->
+      <div class="status-bar">
+        <div class="status-chips">
+          <div id="chip-audio" class="chip" title="Chromium Loopback (WASAPI/ScreenCaptureKit)">
+            <span class="indicator"></span>
+            <span id="label-audio">Audio: Inactive</span>
+          </div>
+          <div class="vu-bar-container" title="Audio Activity Meter">
+            <div id="vu-meter" class="vu-bar"></div>
+          </div>
+          <div id="chip-stt" class="chip" title="Local Whisper Model">
+            <span class="indicator"></span>
+            <span id="label-stt">STT: Whisper Loading...</span>
+          </div>
+        </div>
+
+        <div id="chip-proxy" class="chip" title="Interview Copilot Proxy API">
+          <span class="indicator"></span>
+          <span id="label-proxy">Proxy: Checking</span>
+        </div>
+      </div>
+
+      <!-- Main Scrollable Content -->
+      <main class="hud-content">
+        <!-- 1. Spoken Transcript Card -->
+        <section class="hud-card">
+          <div class="card-header">
+            <span class="card-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              Interviewer Speech (Rolling 60s)
+            </span>
+            <div class="card-actions">
+              <button id="btn-start-audio" class="small-btn">Capture Output Audio</button>
+              <button id="btn-sim-speech" class="small-btn" title="Simulate sample interviewer question">Sample Q</button>
+              <button id="btn-clear-transcript" class="small-btn">Clear</button>
+            </div>
+          </div>
+          <div id="transcript-box" class="transcript-box">
+            <span class="transcript-empty">Waiting for interviewer audio or press "Sample Q" to test...</span>
+          </div>
+        </section>
+
+        <!-- 2. Clipboard Code Context Card -->
+        <section class="hud-card">
+          <div class="card-header">
+            <span class="card-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+              Code Context <span id="code-lang-badge" class="code-badge" style="display:none;">JAVA</span>
+            </span>
+            <div class="card-actions">
+              <button id="btn-capture-clipboard" class="small-btn" title="Capture OS Clipboard (⌘⇧C)">Capture (⌘⇧C)</button>
+              <button id="btn-clear-code" class="small-btn">Clear</button>
+            </div>
+          </div>
+          <pre id="code-box" class="code-box"><span class="transcript-empty">Copy code in your IDE and press ⌘⇧C...</span></pre>
+        </section>
+
+        <!-- 3. AI Solution & Streaming View Card -->
+        <section class="hud-card solution-card">
+          <div class="card-header">
+            <span class="card-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Copilot Solution
+            </span>
+            <div class="card-actions">
+              <span id="solution-status" class="code-badge" style="display: none;">STREAMING</span>
+              <button id="btn-copy-solution" class="small-btn">Copy All</button>
+            </div>
+          </div>
+          <div id="solution-container" class="solution-container">
+            <div class="solution-empty">
+              <div class="empty-icon">💡</div>
+              <p>Ready. Press <strong>⌘⇧⏎</strong> or click "Solve Question" below to stream live Java/coding solutions.</p>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- Bottom Floating Controls -->
+      <footer class="hud-footer">
+        <button id="btn-solve" class="primary-btn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          <span>Solve Question</span>
+          <span class="kbd-badge">⌘⇧⏎</span>
+        </button>
+        <button id="btn-clear-all" class="secondary-btn" title="Clear all context (⌘⇧X)">
+          <span>Reset</span>
+          <span class="kbd-badge">⌘⇧X</span>
+        </button>
+      </footer>
+
+      <!-- Settings & Cheatsheet Modal -->
+      <div id="settings-modal" class="modal-overlay">
+        <div class="modal-card">
+          <div class="modal-header">
+            <span class="modal-title">Stealth Copilot Settings</span>
+            <button id="btn-close-settings" class="icon-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Proxy API URL</label>
+            <input id="input-api-url" class="form-input" type="text" value="http://127.0.0.1:3000" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Auth Token (x-copilot-token)</label>
+            <input id="input-api-token" class="form-input" type="password" value="super_secret_interview_copilot_token_2026" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Local Whisper Model</label>
+            <select id="select-whisper-model" class="form-input">
+              <option value="Xenova/whisper-base.en" selected>Xenova/whisper-base.en (Accurate, ~140MB)</option>
+              <option value="Xenova/whisper-tiny.en">Xenova/whisper-tiny.en (Ultra-fast, ~75MB)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Overlay Opacity: <span id="opacity-val">88%</span></label>
+            <input id="input-opacity" type="range" min="20" max="100" value="88" style="accent-color: var(--accent-cyan);" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Global Stealth Hotkeys</label>
+            <div class="shortcut-list">
+              <div class="shortcut-item"><span>Capture Code</span><span class="kbd-badge">⌘⇧C</span></div>
+              <div class="shortcut-item"><span>Solve Problem</span><span class="kbd-badge">⌘⇧⏎</span></div>
+              <div class="shortcut-item"><span>Clear All</span><span class="kbd-badge">⌘⇧X</span></div>
+              <div class="shortcut-item"><span>Hide/Show Overlay</span><span class="kbd-badge">⌘⇧H</span></div>
+              <div class="shortcut-item"><span>Toggle Click-Through</span><span class="kbd-badge">⌘⇧M</span></div>
+              <div class="shortcut-item"><span>Snap Window</span><span class="kbd-badge">⌘⇧ Arrows</span></div>
+            </div>
+          </div>
+
+          <button id="btn-save-settings" class="primary-btn" style="margin-top: 6px;">Save & Test Connection</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

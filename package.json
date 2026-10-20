@@ -1,0 +1,26 @@
+{
+  "name": "interview-copilot-desktop",
+  "version": "1.0.0",
+  "description": "Cross-Platform Stealth Interview Copilot Desktop Client",
+  "main": "./out/main/index.js",
+  "author": "Antigravity",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@xenova/transformers": "^2.17.2",
+    "highlight.js": "^11.10.0",
+    "marked": "^14.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "electron": "^32.3.3",
+    "electron-vite": "^3.1.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}
