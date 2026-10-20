@@ -4,6 +4,7 @@ export interface SolvePayload {
   spokenContext: string
   codeContext?: string
   history?: Array<{ role: 'user' | 'model'; parts: string }>
+  authToken?: string
 }
 
 export interface ApiClientConfig {
@@ -46,9 +47,11 @@ export async function checkApiHealth(customUrl?: string, customToken?: string): 
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 4000)
 
+    const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`
     const response = await fetch(`${targetUrl}/health`, {
       method: 'GET',
       headers: {
+        'Authorization': authHeader,
         'x-copilot-token': token
       },
       signal: controller.signal
@@ -89,11 +92,15 @@ export async function streamSolveRequest(
   console.log(`[ApiProxyClient] Posting solve request to: ${endpoint}`)
 
   try {
+    const activeToken = payload.authToken || clientConfig.authToken
+    const authHeader = activeToken.startsWith('Bearer ') ? activeToken : `Bearer ${activeToken}`
+
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-copilot-token': clientConfig.authToken,
+        'Authorization': authHeader,
+        'x-copilot-token': activeToken,
         Accept: 'text/event-stream'
       },
       body: JSON.stringify({

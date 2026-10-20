@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import {
   createStealthWindow,
   getStealthWindow,
@@ -19,6 +19,15 @@ import {
   ApiClientConfig
 } from './apiProxyClient'
 
+// 1. Register custom protocol 'copilot://'
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('copilot', process.execPath, [resolve(process.argv[1])])
+  }
+} else {
+  app.setAsDefaultProtocolClient('copilot')
+}
+
 // Ensure single application instance
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 if (!gotSingleInstanceLock) {
@@ -26,6 +35,30 @@ if (!gotSingleInstanceLock) {
 }
 
 let mainWindow: BrowserWindow | null = null
+let pendingCustomToken: string | null = null
+
+function handleDeepLink(urlStr: string): void {
+  try {
+    console.log(`[Main] Deep link received: ${urlStr}`)
+    const parsedUrl = new URL(urlStr)
+    const token = parsedUrl.searchParams.get('token') || parsedUrl.searchParams.get('customToken')
+    if (token) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('auth:custom-token', token)
+      } else {
+        pendingCustomToken = token
+      }
+    }
+  } catch (err) {
+    console.error('[Main] Failed to parse deep link URL:', err)
+  }
+}
+
+// 2. macOS: Capture 'open-url' event without stealing focus
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  handleDeepLink(url)
+})
 
 function setupIpcHandlers(): void {
   // Window management IPC
@@ -88,6 +121,13 @@ function setupIpcHandlers(): void {
       isClickThrough: false
     }
   })
+
+  // Auth token synchronization from Firebase in Renderer
+  ipcMain.on('auth:sync-token', (_event, token: string) => {
+    if (token) {
+      setApiConfig({ authToken: token })
+    }
+  })
 }
 
 async function initializeApp(): Promise<void> {
@@ -103,6 +143,20 @@ async function initializeApp(): Promise<void> {
   // Register IPC communications
   setupIpcHandlers()
 
+  // Dispatch any pending auth deep link token once renderer is loaded
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (pendingCustomToken && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('auth:custom-token', pendingCustomToken)
+      pendingCustomToken = null
+    }
+  })
+
+  // Check if initial process argv contains a copilot:// deep link on cold launch (Windows/Linux)
+  const initialDeepLink = process.argv.find((arg) => arg.startsWith('copilot://'))
+  if (initialDeepLink) {
+    handleDeepLink(initialDeepLink)
+  }
+
   // Load renderer view
   if (process.env['ELECTRON_RENDERER_URL']) {
     await mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -113,7 +167,15 @@ async function initializeApp(): Promise<void> {
 
 app.whenReady().then(initializeApp)
 
-app.on('second-instance', () => {
+// 3. Windows/Linux: Second instance handling (Stealth: DO NOT steal focus if it's a deep link)
+app.on('second-instance', (_event, commandLine) => {
+  const deepLink = commandLine.find((arg) => arg.startsWith('copilot://'))
+  if (deepLink) {
+    // Process deep link silently without altering active window focus
+    handleDeepLink(deepLink)
+    return
+  }
+
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
     if (!mainWindow.isVisible()) mainWindow.show()

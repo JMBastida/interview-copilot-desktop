@@ -11,6 +11,7 @@ export interface SolvePayload {
   spokenContext: string
   codeContext?: string
   history?: Array<{ role: 'user' | 'model'; parts: string }>
+  authToken?: string
 }
 
 export interface ApiClientConfig {
@@ -29,6 +30,17 @@ export interface SystemInfo {
 }
 
 const api = {
+  // Auth & Deep Linking
+  onCustomToken: (callback: (token: string) => void): (() => void) => {
+    const handler = (_event: any, token: string) => callback(token)
+    ipcRenderer.on('auth:custom-token', handler)
+    return () => ipcRenderer.removeListener('auth:custom-token', handler)
+  },
+
+  syncAuthToken: (token: string): void => {
+    ipcRenderer.send('auth:sync-token', token)
+  },
+
   // Hotkey & Event Listeners
   onClipboardCaptured: (callback: (data: ClipboardData) => void): (() => void) => {
     const handler = (_event: any, data: ClipboardData) => callback(data)

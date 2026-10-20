@@ -57,6 +57,11 @@
           <span class="indicator"></span>
           <span id="label-proxy">Proxy: Checking</span>
         </div>
+
+        <div id="chip-auth" class="chip" title="Firebase Stealth Auth (copilot://?token=...)">
+          <span class="indicator"></span>
+          <span id="label-auth">Auth: Guest</span>
+        </div>
       </div>
 
       <!-- Main Scrollable Content -->
@@ -144,8 +149,17 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Auth Token (x-copilot-token)</label>
+            <label class="form-label">Auth Token / Secret</label>
             <input id="input-api-token" class="form-input" type="password" value="super_secret_interview_copilot_token_2026" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Firebase Stealth Auth (copilot://)</label>
+            <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+              <input id="input-custom-token" class="form-input" type="password" placeholder="Paste custom token or copilot:// URL" />
+              <button id="btn-apply-token" class="secondary-btn" style="white-space: nowrap; padding: 0 12px;">Login</button>
+            </div>
+            <div id="auth-user-info" style="font-size: 11px; color: var(--text-dim);">Status: Not signed in</div>
           </div>
 
           <div class="form-group">

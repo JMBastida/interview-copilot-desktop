@@ -1,6 +1,14 @@
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import { AudioRingBuffer } from './audio/ringBuffer'
+import {
+  initializeAuthBridge,
+  getValidAuthToken,
+  onAuthStatusChanged,
+  logoutUser,
+  auth
+} from './auth'
+import { signInWithCustomToken } from 'firebase/auth'
 
 // --- State Variables ---
 let audioContext: AudioContext | null = null
@@ -47,6 +55,9 @@ const labelStt = document.getElementById('label-stt') as HTMLSpanElement
 const chipProxy = document.getElementById('chip-proxy') as HTMLDivElement
 const labelProxy = document.getElementById('label-proxy') as HTMLSpanElement
 
+const chipAuth = document.getElementById('chip-auth') as HTMLDivElement
+const labelAuth = document.getElementById('label-auth') as HTMLSpanElement
+
 const btnStartAudio = document.getElementById('btn-start-audio') as HTMLButtonElement
 const btnSimSpeech = document.getElementById('btn-sim-speech') as HTMLButtonElement
 const btnClearTranscript = document.getElementById('btn-clear-transcript') as HTMLButtonElement
@@ -68,6 +79,9 @@ const settingsModal = document.getElementById('settings-modal') as HTMLDivElemen
 const btnCloseSettings = document.getElementById('btn-close-settings') as HTMLButtonElement
 const inputApiUrl = document.getElementById('input-api-url') as HTMLInputElement
 const inputApiToken = document.getElementById('input-api-token') as HTMLInputElement
+const inputCustomToken = document.getElementById('input-custom-token') as HTMLInputElement
+const btnApplyToken = document.getElementById('btn-apply-token') as HTMLButtonElement
+const authUserInfo = document.getElementById('auth-user-info') as HTMLDivElement
 const selectWhisperModel = document.getElementById('select-whisper-model') as HTMLSelectElement
 const inputOpacity = document.getElementById('input-opacity') as HTMLInputElement
 const opacityVal = document.getElementById('opacity-val') as HTMLSpanElement
@@ -263,7 +277,7 @@ function updateClipboardContext(text: string, language: string = 'java'): void {
 }
 
 // --- Copilot Solving & Markdown Streaming ---
-function triggerSolve(): void {
+async function triggerSolve(): Promise<void> {
   if (isSolving) return
 
   const spoken = currentSpokenTranscript.trim()
@@ -284,10 +298,14 @@ function triggerSolve(): void {
 
   solutionContainer.innerHTML = '<div class="streaming-cursor"></div>'
 
+  // Retrieve fresh Firebase ID Token if authenticated
+  const idToken = await getValidAuthToken()
+
   // Invoke Main process SSE proxy client
   window.electronAPI.solve({
     spokenContext: spoken,
-    codeContext: code
+    codeContext: code,
+    authToken: idToken || undefined
   })
 }
 
@@ -588,6 +606,49 @@ function setupEventListeners(): void {
     window.electronAPI.setWindowOpacity(val / 100)
   })
 
+  // Auth Status Watcher (Updates HUD chip and settings UI)
+  onAuthStatusChanged((user) => {
+    if (user) {
+      chipAuth.classList.add('online')
+      chipAuth.classList.remove('offline')
+      labelAuth.textContent = `Auth: ${user.email || user.uid.slice(0, 6)}`
+      authUserInfo.innerHTML = `<span style="color: var(--accent-emerald);">● Logged In</span> (<code>${user.email || user.uid}</code>) <button id="btn-logout" class="small-btn" style="margin-left: 8px;">Logout</button>`
+      const btnLogout = document.getElementById('btn-logout')
+      if (btnLogout) {
+        btnLogout.onclick = async () => {
+          await logoutUser()
+        }
+      }
+    } else {
+      chipAuth.classList.remove('online')
+      chipAuth.classList.add('offline')
+      labelAuth.textContent = 'Auth: Guest'
+      authUserInfo.textContent = 'Status: Not signed in. Use copilot:// URL or paste token below.'
+    }
+  })
+
+  // Manual token apply button in settings
+  btnApplyToken.addEventListener('click', async () => {
+    let val = inputCustomToken.value.trim()
+    if (!val) return
+    if (val.startsWith('copilot://')) {
+      try {
+        const parsed = new URL(val)
+        val = parsed.searchParams.get('token') || parsed.searchParams.get('customToken') || val
+      } catch {}
+    }
+    try {
+      btnApplyToken.textContent = '...'
+      await signInWithCustomToken(auth, val)
+      inputCustomToken.value = ''
+      btnApplyToken.textContent = 'OK!'
+      setTimeout(() => { btnApplyToken.textContent = 'Login' }, 2000)
+    } catch (err: any) {
+      alert('Error signing in with custom token: ' + (err.message || err))
+      btnApplyToken.textContent = 'Login'
+    }
+  })
+
   btnSaveSettings.addEventListener('click', async () => {
     const apiUrl = inputApiUrl.value.trim()
     const authToken = inputApiToken.value.trim()
@@ -653,6 +714,7 @@ function setupEventListeners(): void {
 
 // --- Initialization ---
 function bootstrap(): void {
+  initializeAuthBridge()
   setupEventListeners()
   initSttWorker()
   pollProxyHealth()

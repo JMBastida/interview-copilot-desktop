@@ -28,6 +28,12 @@ A cross-platform (Windows & macOS) desktop application built with **Electron + T
 5. **Token-by-Token SSE Stream Rendering**
    - Streams live markdown answers from the companion `interview-copilot-api` proxy with syntax highlighting (`highlight.js`) and one-click code copying.
 
+6. **Stealth Firebase Deep Linking (`copilot://`)**
+   - Protocol-level silent authentication handoff via `copilot://auth?token=<customToken>`.
+   - The OS **does not steal window focus** away from your coding IDE during browser redirect.
+   - Sessions are persisted locally in IndexedDB via Firebase Client SDK.
+   - Seamlessly injects dynamic `Authorization: Bearer <idToken>` headers into streaming solve requests.
+
 ---
 
 ## ⌨️ Global Stealth Hotkeys

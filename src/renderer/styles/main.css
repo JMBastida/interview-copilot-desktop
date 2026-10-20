@@ -203,12 +203,14 @@ body {
   animation: pulse 0.8s infinite;
 }
 
-.chip.ready .indicator {
+.chip.ready .indicator,
+.chip.online .indicator {
   background: var(--accent-emerald);
   box-shadow: 0 0 6px var(--accent-emerald);
 }
 
-.chip.error .indicator {
+.chip.error .indicator,
+.chip.offline .indicator {
   background: var(--accent-rose);
   box-shadow: 0 0 6px var(--accent-rose);
 }
