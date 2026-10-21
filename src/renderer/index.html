@@ -174,13 +174,26 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Speech-to-Text Model</label>
+            <label class="form-label">Default Speech-to-Text Model</label>
             <select id="select-whisper-model" class="form-input">
-              <option value="auto" selected>Auto-Detect (WebGPU Large-v3-Turbo / WASM Tiny)</option>
-              <option value="onnx-community/whisper-large-v3-turbo">Whisper Large v3 Turbo (WebGPU Recommended)</option>
-              <option value="onnx-community/whisper-base.en">Whisper Base English (Balanced)</option>
-              <option value="onnx-community/whisper-tiny.en">Whisper Tiny English (Lightweight WASM)</option>
+              <option value="auto">Auto-Detect (WebGPU Large-v3-Turbo / WASM Tiny)</option>
+              <option value="onnx-community/whisper-tiny.en" selected>Whisper Tiny English (Fastest, ~75MB - Recommended Default)</option>
+              <option value="onnx-community/whisper-base.en">Whisper Base English (Balanced, ~140MB)</option>
+              <option value="onnx-community/whisper-large-v3-turbo">Whisper Large v3 Turbo (WebGPU High Precision, ~800MB)</option>
             </select>
+            <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">
+              Saved as your launch default. Weights are downloaded once and cached.
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input id="check-auto-download-model" type="checkbox" checked style="accent-color: var(--accent-cyan); width: 15px; height: 15px;" />
+              <span>Auto-download Whisper model on app launch</span>
+            </label>
+            <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">
+              If unchecked, the model will only download when you click "Capture Output Audio".
+            </div>
           </div>
 
           <div class="form-group">

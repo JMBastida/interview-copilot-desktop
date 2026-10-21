@@ -50,16 +50,32 @@ let transcriber: any = null
 let currentModel = ''
 let currentDevice = 'wasm'
 let isInitializing = false
+let currentSessionId = 0
 
 async function initPipeline(preferredModel?: string) {
-  isInitializing = true
   const config = await detectDeviceAndModel(preferredModel)
+
+  // If already loaded and matching model & device, no need to re-download!
+  if (transcriber && currentModel === config.model && currentDevice === config.device && !isInitializing) {
+    self.postMessage({
+      type: 'log',
+      message: `[STT Worker] ${currentModel} is already active on ${currentDevice.toUpperCase()}`
+    })
+    self.postMessage({ type: 'status', status: 'ready', model: currentModel, device: currentDevice })
+    return
+  }
+
+  // Increment session ID to cancel/ignore any in-flight download from an earlier selection
+  currentSessionId++
+  const sessionId = currentSessionId
+
+  isInitializing = true
   currentModel = config.model
   currentDevice = config.device
 
   self.postMessage({
     type: 'log',
-    message: `[STT Worker] Initializing model: ${currentModel} on device: ${currentDevice.toUpperCase()}`
+    message: `[STT Worker] Initializing model: ${currentModel} on device: ${currentDevice.toUpperCase()} (session #${sessionId})`
   })
   self.postMessage({ type: 'status', status: 'loading', model: currentModel, percent: 0 })
 
@@ -67,6 +83,9 @@ async function initPipeline(preferredModel?: string) {
     const pipelineOptions: any = {
       device: currentDevice,
       progress_callback: (p: any) => {
+        // Discard progress events from older, superseded sessions
+        if (sessionId !== currentSessionId) return
+
         if (p.status === 'progress') {
           self.postMessage({
             type: 'status',
@@ -83,8 +102,18 @@ async function initPipeline(preferredModel?: string) {
       pipelineOptions.dtype = config.dtype
     }
 
-    transcriber = await pipeline('automatic-speech-recognition', currentModel, pipelineOptions)
+    const instance = await pipeline('automatic-speech-recognition', currentModel, pipelineOptions)
 
+    // If user swapped to another model while this one was downloading, discard this instance
+    if (sessionId !== currentSessionId) {
+      self.postMessage({
+        type: 'log',
+        message: `[STT Worker] Discarding ${config.model} because another model was requested.`
+      })
+      return
+    }
+
+    transcriber = instance
     isInitializing = false
     self.postMessage({
       type: 'log',
@@ -92,6 +121,8 @@ async function initPipeline(preferredModel?: string) {
     })
     self.postMessage({ type: 'status', status: 'ready', model: currentModel, device: currentDevice })
   } catch (err: any) {
+    if (sessionId !== currentSessionId) return
+
     isInitializing = false
     console.error('[STT Worker] Failed to load pipeline:', err)
     self.postMessage({
@@ -118,7 +149,7 @@ self.onmessage = async (event: MessageEvent) => {
   if (type === 'transcribe') {
     if (!transcriber) {
       if (!isInitializing) {
-        await initPipeline(currentModel)
+        await initPipeline(currentModel || undefined)
       } else {
         self.postMessage({ type: 'transcription', id, text: '', error: 'Model still initializing' })
         return
@@ -173,5 +204,5 @@ self.onmessage = async (event: MessageEvent) => {
   }
 }
 
-// Auto-initiate detection and loading on worker spawn
-initPipeline()
+// Notify renderer that worker is spawned and waiting for explicit init instruction
+self.postMessage({ type: 'status', status: 'idle' })

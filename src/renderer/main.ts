@@ -144,9 +144,23 @@ const inputCustomToken = document.getElementById('input-custom-token') as HTMLIn
 const btnApplyToken = document.getElementById('btn-apply-token') as HTMLButtonElement
 const authUserInfo = document.getElementById('auth-user-info') as HTMLDivElement
 const selectWhisperModel = document.getElementById('select-whisper-model') as HTMLSelectElement
+const checkAutoDownloadModel = document.getElementById('check-auto-download-model') as HTMLInputElement | null
 const inputOpacity = document.getElementById('input-opacity') as HTMLInputElement
 const opacityVal = document.getElementById('opacity-val') as HTMLSpanElement
 const btnSaveSettings = document.getElementById('btn-save-settings') as HTMLButtonElement
+
+// --- LocalStorage Keys & Helpers for STT Preferences ---
+const STORAGE_KEY_WHISPER_MODEL = 'copilot_whisper_model'
+const STORAGE_KEY_AUTO_DOWNLOAD = 'copilot_whisper_autodownload'
+
+function getSavedWhisperModel(): string {
+  return localStorage.getItem(STORAGE_KEY_WHISPER_MODEL) || 'onnx-community/whisper-tiny.en'
+}
+
+function getIsAutoDownloadEnabled(): boolean {
+  const val = localStorage.getItem(STORAGE_KEY_AUTO_DOWNLOAD)
+  return val === null ? true : val === 'true'
+}
 
 // --- Audio Loopback & Ring Buffer Capture ---
 async function startAudioCapture(): Promise<void> {
@@ -196,6 +210,13 @@ async function startAudioCapture(): Promise<void> {
 
     startVuMeterLoop()
     startSttPollingLoop()
+
+    // Ensure STT model is loaded on demand if auto-download on launch was disabled
+    if (sttWorker) {
+      const savedModel = getSavedWhisperModel()
+      const targetModel = savedModel === 'auto' ? undefined : savedModel
+      sttWorker.postMessage({ type: 'init', model: targetModel })
+    }
 
     audioTrack.onended = () => {
       stopAudioCapture()
@@ -311,7 +332,12 @@ function initSttWorker(): void {
       }
 
       if (type === 'status') {
-        if (status === 'loading') {
+        if (status === 'idle') {
+          if (!activeSttLabel || activeSttLabel === 'STT: Ready') {
+            chipStt.className = 'chip'
+            labelStt.textContent = 'STT: Standby'
+          }
+        } else if (status === 'loading') {
           chipStt.className = 'chip active'
           labelStt.textContent = percent ? `STT: Loading (${percent}%)` : 'STT: Downloading Model...'
           addDebugLog(`[STT Model] Loading (${percent || 0}%)${file ? ' - ' + file : ''}`, 'info')
@@ -342,6 +368,16 @@ function initSttWorker(): void {
           addDebugLog(`[STT Result] (no speech detected in chunk, ${durationMs}ms)`, 'warn')
         }
       }
+    }
+
+    // Auto-load default model on launch if user enabled it
+    if (getIsAutoDownloadEnabled()) {
+      const savedModel = getSavedWhisperModel()
+      const targetModel = savedModel === 'auto' ? undefined : savedModel
+      addDebugLog(`[STT] Auto-downloading launch default model: ${savedModel}`, 'info')
+      sttWorker.postMessage({ type: 'init', model: targetModel })
+    } else {
+      addDebugLog('[STT] Auto-download is disabled. Model will load when audio capture starts.', 'info')
     }
   } catch (err: any) {
     isTranscribing = false
@@ -759,6 +795,12 @@ function setupEventListeners(): void {
     const config = await window.electronAPI.getApiConfig()
     inputApiUrl.value = config.apiUrl
     inputApiToken.value = config.authToken
+    if (selectWhisperModel) {
+      selectWhisperModel.value = getSavedWhisperModel()
+    }
+    if (checkAutoDownloadModel) {
+      checkAutoDownloadModel.checked = getIsAutoDownloadEnabled()
+    }
     settingsModal.classList.add('open')
   })
 
@@ -820,14 +862,21 @@ function setupEventListeners(): void {
     const authToken = inputApiToken.value.trim()
     await window.electronAPI.setApiConfig({ apiUrl, authToken })
 
+    // Save STT preferences to localStorage
+    const chosenModel = selectWhisperModel.value
+    localStorage.setItem(STORAGE_KEY_WHISPER_MODEL, chosenModel)
+    if (checkAutoDownloadModel) {
+      localStorage.setItem(STORAGE_KEY_AUTO_DOWNLOAD, String(checkAutoDownloadModel.checked))
+    }
+
     if (sttWorker) {
-      const selectedModel = selectWhisperModel.value === 'auto' ? undefined : selectWhisperModel.value
-      addDebugLog(`[Settings] Requesting model switch to: ${selectedModel || 'Auto-Detect'}`, 'info')
+      const selectedModel = chosenModel === 'auto' ? undefined : chosenModel
+      addDebugLog(`[Settings] Switching STT model to: ${chosenModel}`, 'info')
       sttWorker.postMessage({ type: 'init', model: selectedModel })
     }
 
     const health = await window.electronAPI.checkApiHealth(apiUrl, authToken)
-    alert(`Settings saved!\nProxy Status: ${health.status} (${health.latencyMs}ms)`)
+    alert(`Settings saved!\nDefault STT Model: ${chosenModel}\nProxy Status: ${health.status} (${health.latencyMs}ms)`)
     settingsModal.classList.remove('open')
     pollProxyHealth()
   })
@@ -882,6 +931,14 @@ function setupEventListeners(): void {
 
 // --- Initialization ---
 function bootstrap(): void {
+  // Restore persisted STT preferences to settings UI
+  if (selectWhisperModel) {
+    selectWhisperModel.value = getSavedWhisperModel()
+  }
+  if (checkAutoDownloadModel) {
+    checkAutoDownloadModel.checked = getIsAutoDownloadEnabled()
+  }
+
   initializeAuthBridge()
   setupEventListeners()
   initSttWorker()
