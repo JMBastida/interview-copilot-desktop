@@ -1,9 +1,16 @@
 import { BrowserWindow } from 'electron'
 
+export interface ConversationTurn {
+  role: 'user' | 'assistant' | 'model'
+  content: string
+}
+
 export interface SolvePayload {
-  spokenContext: string
+  spokenPrompt?: string
+  spokenContext?: string
   codeContext?: string
-  history?: Array<{ role: 'user' | 'model'; parts: string }>
+  language?: string
+  history?: ConversationTurn[]
   authToken?: string
 }
 
@@ -104,8 +111,11 @@ export async function streamSolveRequest(
         Accept: 'text/event-stream'
       },
       body: JSON.stringify({
-        spokenContext: payload.spokenContext || '',
+        spokenPrompt:
+          (payload.spokenPrompt || payload.spokenContext || '').trim() ||
+          (payload.codeContext ? 'Analyze and solve the provided code context.' : 'Provide solution and code for the interview problem.'),
         codeContext: payload.codeContext || '',
+        language: payload.language || 'Java',
         history: payload.history || []
       }),
       signal

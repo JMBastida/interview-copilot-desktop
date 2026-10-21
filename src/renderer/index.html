@@ -74,7 +74,8 @@
           <div class="card-header">
             <span class="card-title">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-              Interviewer Speech (Rolling 60s)
+              Interviewer Speech
+              <span id="turn-badge" class="turn-badge">Turn 1 (Initial)</span>
             </span>
             <div class="card-actions">
               <button id="btn-start-audio" class="small-btn">Capture Output Audio</button>
@@ -116,10 +117,12 @@
             <span class="card-title">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
               Copilot Solution
+              <div id="solution-turns-nav" class="turn-nav-tabs"></div>
             </span>
             <div class="card-actions">
               <span id="solution-status" class="code-badge" style="display: none;">STREAMING</span>
               <button id="btn-copy-solution" class="small-btn">Copy All</button>
+              <button id="btn-new-topic" class="small-btn" title="Start a fresh question/topic without prior history">New Topic</button>
             </div>
           </div>
           <div id="solution-container" class="solution-container">

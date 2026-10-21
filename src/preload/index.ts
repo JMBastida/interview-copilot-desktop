@@ -7,10 +7,17 @@ export interface ClipboardData {
   charCount: number
 }
 
+export interface ConversationTurn {
+  role: 'user' | 'assistant' | 'model'
+  content: string
+}
+
 export interface SolvePayload {
-  spokenContext: string
+  spokenPrompt?: string
+  spokenContext?: string
   codeContext?: string
-  history?: Array<{ role: 'user' | 'model'; parts: string }>
+  language?: string
+  history?: ConversationTurn[]
   authToken?: string
 }
 

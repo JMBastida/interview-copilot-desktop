@@ -20,8 +20,26 @@ let isAudioActive = false
 let isSolving = false
 let streamedResponseText = ''
 let currentClipboardText = ''
+let currentClipboardLanguage = 'Java'
 let currentSpokenTranscript = ''
 let isPassThrough = false
+
+// --- Multi-Turn Interview State ---
+export interface CompletedTurn {
+  turnNumber: number
+  spokenPrompt: string
+  codeContext: string
+  language: string
+  solutionMarkdown: string
+  timestamp: number
+}
+
+let completedTurns: CompletedTurn[] = []
+let activeTurnNumber = 1
+let viewingTurnNumber = 1
+let inFlightTurnPrompt = ''
+let inFlightTurnCode = ''
+let inFlightTurnLanguage = 'Java'
 
 // Sample interview questions for instant demo/testing
 const sampleQuestions = [
@@ -134,6 +152,9 @@ const solutionStatus = document.getElementById('solution-status') as HTMLSpanEle
 const btnCopySolution = document.getElementById('btn-copy-solution') as HTMLButtonElement
 const btnSolve = document.getElementById('btn-solve') as HTMLButtonElement
 const btnClearAll = document.getElementById('btn-clear-all') as HTMLButtonElement
+const turnBadge = document.getElementById('turn-badge') as HTMLSpanElement
+const solutionTurnsNav = document.getElementById('solution-turns-nav') as HTMLDivElement
+const btnNewTopic = document.getElementById('btn-new-topic') as HTMLButtonElement
 
 // Settings Modal DOM
 const settingsModal = document.getElementById('settings-modal') as HTMLDivElement
@@ -425,16 +446,126 @@ function appendSpokenTranscript(text: string): void {
 
 function renderTranscriptUI(): void {
   if (!currentSpokenTranscript.trim()) {
-    transcriptBox.innerHTML = '<span class="transcript-empty">Waiting for interviewer audio or press "Sample Q" to test...</span>'
+    if (activeTurnNumber === 1) {
+      transcriptBox.innerHTML = '<span class="transcript-empty">Waiting for interviewer audio or press "Sample Q" to test...</span>'
+    } else {
+      transcriptBox.innerHTML = `<span class="transcript-empty">Waiting for Part ${activeTurnNumber} follow-up speech (or press "Sample Q")...</span>`
+    }
   } else {
     transcriptBox.textContent = currentSpokenTranscript
     transcriptBox.scrollTop = transcriptBox.scrollHeight
   }
 }
 
+// --- Dynamic Multi-Turn Interview UI Navigation ---
+function renderTurnUI(): void {
+  if (turnBadge) {
+    if (activeTurnNumber === 1) {
+      turnBadge.className = 'turn-badge'
+      turnBadge.textContent = 'Turn 1 (Initial)'
+    } else {
+      turnBadge.className = 'turn-badge follow-up'
+      turnBadge.textContent = `Turn ${activeTurnNumber} (Follow-Up #${activeTurnNumber - 1})`
+    }
+  }
+
+  if (solutionTurnsNav) {
+    solutionTurnsNav.innerHTML = ''
+    if (completedTurns.length === 0 && !isSolving) {
+      solutionTurnsNav.style.display = 'none'
+      return
+    }
+    solutionTurnsNav.style.display = 'flex'
+
+    // Completed turn tabs
+    completedTurns.forEach((turn) => {
+      const pill = document.createElement('button')
+      const isSelected = viewingTurnNumber === turn.turnNumber
+      pill.className = `turn-pill completed ${isSelected ? 'active' : ''}`
+      pill.textContent = `Part ${turn.turnNumber} ✓`
+      pill.title = `Review solution for Part ${turn.turnNumber}:\n"${turn.spokenPrompt.slice(0, 60)}..."`
+      pill.onclick = (e) => {
+        e.stopPropagation()
+        showTurnSolution(turn.turnNumber)
+      }
+      solutionTurnsNav.appendChild(pill)
+    })
+
+    // Active or upcoming turn tab
+    const activePill = document.createElement('button')
+    const isActiveViewing = viewingTurnNumber === activeTurnNumber
+    activePill.className = `turn-pill ${isActiveViewing ? 'active' : ''}`
+    activePill.textContent = isSolving ? `Part ${activeTurnNumber} ⟳` : `Part ${activeTurnNumber} (Next)`
+    activePill.title = `Part ${activeTurnNumber} (Current In-Progress Turn)`
+    activePill.onclick = (e) => {
+      e.stopPropagation()
+      showTurnSolution(activeTurnNumber)
+    }
+    solutionTurnsNav.appendChild(activePill)
+  }
+}
+
+function showTurnSolution(turnNum: number): void {
+  viewingTurnNumber = turnNum
+  renderTurnUI()
+
+  const turn = completedTurns.find((t) => t.turnNumber === turnNum)
+  if (turn) {
+    renderMarkdownContent(turn.solutionMarkdown)
+    solutionStatus.style.display = 'inline-block'
+    solutionStatus.textContent = `PART ${turnNum} SAVED`
+    solutionStatus.style.borderColor = 'var(--accent-emerald)'
+    solutionStatus.style.color = 'var(--accent-emerald)'
+  } else if (turnNum === activeTurnNumber) {
+    if (isSolving) {
+      renderMarkdownContent(streamedResponseText + '<span class="streaming-cursor"></span>')
+      solutionStatus.style.display = 'inline-block'
+      solutionStatus.textContent = `STREAMING PART ${activeTurnNumber}...`
+      solutionStatus.style.borderColor = 'var(--accent-cyan)'
+      solutionStatus.style.color = 'var(--accent-cyan)'
+    } else {
+      solutionContainer.innerHTML = `
+        <div class="solution-empty">
+          <div class="empty-icon">💡</div>
+          <p>Ready for <strong>Part ${activeTurnNumber} (Follow-Up)</strong>.</p>
+          <p style="font-size: 11px; color: var(--text-muted); max-width: 340px; text-align: center;">
+            Interviewer follow-up speech is captured above. Prior ${completedTurns.length} part(s) are stored in conversational context. Press <strong>⌘⇧⏎</strong> to solve.
+          </p>
+        </div>`
+      solutionStatus.style.display = 'none'
+    }
+  }
+}
+
+function renderMarkdownContent(mdText: string): void {
+  const rawHtml = marked.parse(mdText) as string
+  solutionContainer.innerHTML = rawHtml
+
+  // Highlight all code blocks and inject copy buttons
+  solutionContainer.querySelectorAll('pre code').forEach((block) => {
+    hljs.highlightElement(block as HTMLElement)
+    const pre = block.parentElement
+    if (pre && !pre.querySelector('.copy-code-btn')) {
+      const copyBtn = document.createElement('button')
+      copyBtn.className = 'copy-code-btn'
+      copyBtn.textContent = 'Copy Code'
+      copyBtn.onclick = (e) => {
+        e.stopPropagation()
+        navigator.clipboard.writeText(block.textContent || '')
+        copyBtn.textContent = 'Copied!'
+        setTimeout(() => (copyBtn.textContent = 'Copy Code'), 1500)
+      }
+      pre.appendChild(copyBtn)
+    }
+  })
+
+  solutionContainer.scrollTop = solutionContainer.scrollHeight
+}
+
 // --- Clipboard Context Management ---
 function updateClipboardContext(text: string, language: string = 'java'): void {
   currentClipboardText = text
+  currentClipboardLanguage = language || 'java'
   if (!text || text.trim().length === 0) {
     codeBox.innerHTML = '<span class="transcript-empty">Copy code in your IDE and press ⌘⇧C...</span>'
     codeLangBadge.style.display = 'none'
@@ -462,55 +593,95 @@ async function triggerSolve(): Promise<void> {
   }
 
   isSolving = true
+  inFlightTurnPrompt = spoken || 'Analyze the provided code context and follow-up on the previous solution.'
+  inFlightTurnCode = code
+  inFlightTurnLanguage = currentClipboardLanguage || 'Java'
+  viewingTurnNumber = activeTurnNumber
   streamedResponseText = ''
+
   solutionStatus.style.display = 'inline-block'
-  solutionStatus.textContent = 'STREAMING...'
+  solutionStatus.textContent = activeTurnNumber > 1 ? `STREAMING PART ${activeTurnNumber}...` : 'STREAMING...'
   solutionStatus.style.borderColor = 'var(--accent-cyan)'
   solutionStatus.style.color = 'var(--accent-cyan)'
   btnSolve.innerHTML = '<span class="streaming-cursor"></span> Solving...'
 
   solutionContainer.innerHTML = '<div class="streaming-cursor"></div>'
+  renderTurnUI()
 
   // Retrieve fresh Firebase ID Token if authenticated
   const idToken = await getValidAuthToken()
 
-  // Invoke Main process SSE proxy client
+  // Construct multi-turn conversation history for prior interview turns
+  const history: Array<{ role: 'user' | 'assistant'; content: string }> = []
+  for (const prevTurn of completedTurns) {
+    const userTurnParts: string[] = []
+    if (prevTurn.codeContext && prevTurn.codeContext.trim()) {
+      userTurnParts.push(
+        `### Written Code Context (from Editor / Clipboard):\n\`\`\`${(prevTurn.language || 'java').toLowerCase()}\n${prevTurn.codeContext.trim()}\n\`\`\``
+      )
+    }
+    userTurnParts.push(`### Interviewer Spoken Question / Instruction:\n"${prevTurn.spokenPrompt.trim()}"`)
+
+    history.push({
+      role: 'user',
+      content: userTurnParts.join('\n\n')
+    })
+    history.push({
+      role: 'assistant',
+      content: prevTurn.solutionMarkdown
+    })
+  }
+
+  addDebugLog(
+    `[Solve] Triggering Part ${activeTurnNumber} with ${completedTurns.length} prior turn(s) in conversational history`,
+    'info'
+  )
+
+  // Invoke Main process SSE proxy client with aligned keys and history
   window.electronAPI.solve({
-    spokenContext: spoken,
-    codeContext: code,
+    spokenPrompt: inFlightTurnPrompt,
+    codeContext: inFlightTurnCode,
+    language: inFlightTurnLanguage,
+    history,
     authToken: idToken || undefined
   })
 }
 
 function renderMarkdownStream(chunk: string): void {
   streamedResponseText += chunk
-  const rawHtml = marked.parse(streamedResponseText) as string
-  solutionContainer.innerHTML = rawHtml + '<span class="streaming-cursor"></span>'
-
-  // Highlight all code blocks and inject copy buttons
-  solutionContainer.querySelectorAll('pre code').forEach((block) => {
-    hljs.highlightElement(block as HTMLElement)
-    const pre = block.parentElement
-    if (pre && !pre.querySelector('.copy-code-btn')) {
-      const copyBtn = document.createElement('button')
-      copyBtn.className = 'copy-code-btn'
-      copyBtn.textContent = 'Copy Code'
-      copyBtn.onclick = (e) => {
-        e.stopPropagation()
-        navigator.clipboard.writeText(block.textContent || '')
-        copyBtn.textContent = 'Copied!'
-        setTimeout(() => (copyBtn.textContent = 'Copy Code'), 1500)
-      }
-      pre.appendChild(copyBtn)
-    }
-  })
-
-  solutionContainer.scrollTop = solutionContainer.scrollHeight
+  renderMarkdownContent(streamedResponseText + '<span class="streaming-cursor"></span>')
 }
 
 function finalizeSolution(): void {
   isSolving = false
-  solutionStatus.textContent = 'COMPLETE'
+
+  // Save the solved turn into completedTurns
+  if (streamedResponseText.trim().length > 0) {
+    completedTurns.push({
+      turnNumber: activeTurnNumber,
+      spokenPrompt: inFlightTurnPrompt,
+      codeContext: inFlightTurnCode,
+      language: inFlightTurnLanguage,
+      solutionMarkdown: streamedResponseText,
+      timestamp: Date.now()
+    })
+    addDebugLog(
+      `[Solve] Part ${activeTurnNumber} saved to conversation history (Total turns: ${completedTurns.length})`,
+      'success'
+    )
+
+    // Advance active turn number for subsequent follow-up questions
+    activeTurnNumber = completedTurns.length + 1
+    viewingTurnNumber = completedTurns.length // Focus on the just-solved turn
+  }
+
+  // Clear current audio ring buffer & speech box so interviewer's follow-up question starts clean
+  ringBuffer.clear()
+  currentSpokenTranscript = ''
+  renderTranscriptUI()
+  renderTurnUI()
+
+  solutionStatus.textContent = `PART ${viewingTurnNumber} COMPLETE`
   solutionStatus.style.borderColor = 'var(--accent-emerald)'
   solutionStatus.style.color = 'var(--accent-emerald)'
   btnSolve.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>Solve Question</span><span class="kbd-badge">⌘⇧⏎</span>`
@@ -522,13 +693,16 @@ function finalizeSolution(): void {
 
 // Intelligent fallback simulation if Proxy API backend isn't currently running
 function simulateLocalSolution(): void {
-  const simulatedMarkdown = `### 💡 High-Concurrency LRU Cache Solution (Java 21)
+  let simulatedMarkdown = ''
+
+  if (activeTurnNumber === 1) {
+    simulatedMarkdown = `### 💡 Part 1: High-Concurrency LRU Cache Solution (Java 21)
 
 #### 1. Core Architecture & Concurrency Strategy
 To achieve **O(1)** \`get\` and \`put\` operations without a global lock on reads:
 - Use **\`ConcurrentHashMap<K, Node<K, V>>\`** for lock-free \`O(1)\` key lookups.
-- Maintain a **concurrent doubly-linked list** with fine-grained \`ReentrantLock\` or a segmented queue to manage LRU eviction ordering.
-- Use **atomic timestamps** (\`AtomicLong\`) or a read-drain ring buffer (similar to Guava Cache / Caffeine) to record read access without blocking concurrent readers.
+- Maintain a **concurrent doubly-linked list** with fine-grained \`ReentrantLock\` to manage LRU eviction ordering.
+- Use atomic sizes to avoid synchronization on \`size()\` queries.
 
 \`\`\`java
 package com.interview.cache;
@@ -660,6 +834,65 @@ public class ConcurrentLRUCache<K, V> implements ConcurrentCache<K, V> {
   - \`put(key, val)\`: **O(1)** amortized with synchronized list mutation.
 - **Space Complexity**: **O(N)** where $N \\le \\text{capacity}$.
 `
+  } else {
+    // Follow-up simulation (Part 2+: Virtual Threads & Semaphore Backpressure)
+    simulatedMarkdown = `### 💡 Part ${activeTurnNumber}: Follow-Up - Java 21 Virtual Threads & Semaphore Backpressure
+
+#### 1. Architectural Evolution (Building on Part 1)
+Adapting the LRU Cache from Part 1 for **massive throughput (100k+ concurrent requests)**:
+- Utilize **Java 21 Virtual Threads** (\`Executors.newVirtualThreadPerTaskExecutor()\`) for zero-overhead lightweight thread dispatch.
+- Wrap mutations with a **\`Semaphore\`** for backpressure throttling so slow downstreams or cache evictions do not saturate heap memory or pin carrier threads.
+- Eliminate synchronized blocks entirely to prevent carrier-thread pinning during I/O.
+
+\`\`\`java
+package com.interview.cache;
+
+import java.util.concurrent.*;
+
+public class VirtualThreadThrottledCacheService<K, V> implements AutoCloseable {
+    private final ConcurrentLRUCache<K, V> cache;
+    private final ExecutorService virtualExecutor;
+    private final Semaphore backpressurePermits;
+
+    public VirtualThreadThrottledCacheService(int capacity, int maxConcurrentOps) {
+        this.cache = new ConcurrentLRUCache<>(capacity);
+        this.virtualExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        this.backpressurePermits = new Semaphore(maxConcurrentOps, true);
+    }
+
+    public CompletableFuture<V> asyncGet(K key) {
+        return CompletableFuture.supplyAsync(() -> cache.get(key), virtualExecutor);
+    }
+
+    public CompletableFuture<Void> asyncPutWithBackpressure(K key, V value, long timeoutMs) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                if (!backpressurePermits.tryAcquire(timeoutMs, TimeUnit.MILLISECONDS)) {
+                    throw new RejectedExecutionException("Cache backpressure threshold reached: acquisition timed out.");
+                }
+                try {
+                    cache.put(key, value);
+                } finally {
+                    backpressurePermits.release();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new CompletionException(e);
+            }
+        }, virtualExecutor);
+    }
+
+    @Override
+    public void close() {
+        virtualExecutor.close(); // Java 21 auto-shutdown awaiting tasks
+    }
+}
+\`\`\`
+
+#### 2. What to Say to the Interviewer
+- *"In Java 21, Virtual Threads are mounted onto Carrier Threads. Avoid synchronized blocks to prevent carrier thread pinning—ReentrantLock and Semaphore allow the virtual thread to unmount cleanly while waiting for permits."*
+`
+  }
 
   // Stream simulated tokens smoothly
   let charIdx = 0
@@ -675,13 +908,19 @@ public class ConcurrentLRUCache<K, V> implements ConcurrentCache<K, V> {
   }, 16)
 }
 
-// --- Clear Context ---
+// --- Clear Context / Reset Topic ---
 function clearAllContext(): void {
+  completedTurns = []
+  activeTurnNumber = 1
+  viewingTurnNumber = 1
+  inFlightTurnPrompt = ''
+  inFlightTurnCode = ''
   ringBuffer.clear()
   currentSpokenTranscript = ''
   currentClipboardText = ''
   streamedResponseText = ''
   isTranscribing = false
+  renderTurnUI()
   renderTranscriptUI()
   updateClipboardContext('')
   solutionContainer.innerHTML = `
@@ -716,9 +955,10 @@ function setupEventListeners(): void {
   btnStartAudio.addEventListener('click', startAudioCapture)
 
   btnSimSpeech.addEventListener('click', () => {
-    const sample = sampleQuestions[sampleQuestionIdx % sampleQuestions.length]
-    sampleQuestionIdx++
+    const turnIndex = Math.min(activeTurnNumber - 1, sampleQuestions.length - 1)
+    const sample = sampleQuestions[turnIndex]
     appendSpokenTranscript(sample)
+    addDebugLog(`[Sim Speech] Loaded Part ${activeTurnNumber} question prompt`, 'info')
   })
 
   btnClearTranscript.addEventListener('click', () => {
@@ -744,9 +984,17 @@ function setupEventListeners(): void {
   btnSolve.addEventListener('click', triggerSolve)
   btnClearAll.addEventListener('click', clearAllContext)
 
+  if (btnNewTopic) {
+    btnNewTopic.addEventListener('click', () => {
+      clearAllContext()
+    })
+  }
+
   btnCopySolution.addEventListener('click', () => {
-    if (streamedResponseText) {
-      navigator.clipboard.writeText(streamedResponseText)
+    const turn = completedTurns.find((t) => t.turnNumber === viewingTurnNumber)
+    const textToCopy = turn ? turn.solutionMarkdown : streamedResponseText
+    if (textToCopy) {
+      navigator.clipboard.writeText(textToCopy)
       btnCopySolution.textContent = 'Copied!'
       setTimeout(() => (btnCopySolution.textContent = 'Copy All'), 1500)
     }
@@ -941,6 +1189,7 @@ function bootstrap(): void {
 
   initializeAuthBridge()
   setupEventListeners()
+  renderTurnUI()
   initSttWorker()
   pollProxyHealth()
   setInterval(pollProxyHealth, 15000)
