@@ -10,7 +10,7 @@ export class AudioRingBuffer {
   private totalSamplesWritten: number = 0
   private currentRms: number = 0
   private isSpeakingActive: boolean = false
-  private readonly vadThreshold: number = 0.015 // RMS threshold for voice detection
+  private readonly vadThreshold: number = 0.003 // Lowered threshold for digital loopback audio
 
   constructor(sampleRate: number = 16000, maxSeconds: number = 60) {
     this.sampleRate = sampleRate

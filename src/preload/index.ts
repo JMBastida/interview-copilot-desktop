@@ -139,6 +139,14 @@ const api = {
 
   toggleClickThrough: (forceState?: boolean): void => {
     ipcRenderer.send('window:toggle-click-through', forceState)
+  },
+
+  log: (message: string): void => {
+    ipcRenderer.send('app:log', message)
+  },
+
+  openDevTools: (): void => {
+    ipcRenderer.send('app:open-devtools')
   }
 }
 

@@ -1,4 +1,4 @@
-import { session, desktopCapturer, ipcMain, BrowserWindow } from 'electron'
+import { session, desktopCapturer, ipcMain, BrowserWindow, systemPreferences } from 'electron'
 
 /**
  * Configures native Chromium display media request handler for OS audio loopback.
@@ -7,13 +7,28 @@ import { session, desktopCapturer, ipcMain, BrowserWindow } from 'electron'
  * - On macOS (13.2+): Uses ScreenCaptureKit system audio loopback.
  */
 export function setupAudioLoopback(mainWindow: BrowserWindow): void {
+  // Allow display-capture and media permissions for the session
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'display-capture' || permission === 'media') {
+      callback(true)
+      return
+    }
+    callback(true)
+  })
+
+  session.defaultSession.setPermissionCheckHandler(() => {
+    return true
+  })
+
   // Intercept navigator.mediaDevices.getDisplayMedia requests from renderer
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     desktopCapturer
-      .getSources({ types: ['screen'] })
+      .getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
       .then((sources) => {
         if (!sources || sources.length === 0) {
-          console.warn('[AudioLoopback] No screen sources found for loopback capture.')
+          console.warn('[AudioLoopback] No screen sources found for loopback capture. Screen recording permission might be missing.')
+          // Pass null to cleanly cancel the display media request without TypeError
+          ;(callback as any)(null)
           return
         }
 
@@ -29,16 +44,21 @@ export function setupAudioLoopback(mainWindow: BrowserWindow): void {
       })
       .catch((err) => {
         console.error('[AudioLoopback] Error obtaining screen sources:', err)
+        ;(callback as any)(null)
       })
   })
 
   // IPC handler to query loopback audio status
   ipcMain.handle('audio:get-loopback-status', async () => {
     try {
-      const sources = await desktopCapturer.getSources({ types: ['screen'] })
+      const screenAccess = process.platform === 'darwin'
+        ? (systemPreferences.getMediaAccessStatus ? systemPreferences.getMediaAccessStatus('screen') : 'unknown')
+        : 'granted'
+      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
       return {
         supported: true,
         platform: process.platform,
+        screenAccess,
         screensFound: sources.length,
         primaryScreen: sources[0]?.name ?? 'Unknown',
         timestamp: Date.now()
