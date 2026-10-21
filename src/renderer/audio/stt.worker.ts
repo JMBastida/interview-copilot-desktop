@@ -1,25 +1,71 @@
-import { pipeline, env } from '@xenova/transformers'
+import { pipeline, env } from '@huggingface/transformers'
 
-// Configure transformers.js for client/worker operation
+// Configure transformers for browser/worker operation
 env.allowLocalModels = false
 env.useBrowserCache = true
 
-let transcriber: any = null
-let currentModel = 'Xenova/whisper-base.en'
-let isInitializing = false
+interface DeviceConfig {
+  device: 'webgpu' | 'wasm'
+  model: string
+  dtype?: any
+}
 
-async function initPipeline(modelName: string = 'Xenova/whisper-base.en') {
-  if (transcriber && currentModel === modelName) {
-    self.postMessage({ type: 'status', status: 'ready', model: currentModel })
-    return
+async function detectDeviceAndModel(preferredModel?: string): Promise<DeviceConfig> {
+  const nav = typeof navigator !== 'undefined' ? (navigator as any) : null
+  const hasWebGPU = nav && 'gpu' in nav && !!nav.gpu
+
+  if (hasWebGPU) {
+    try {
+      const adapter = await nav.gpu.requestAdapter()
+      if (adapter) {
+        const targetModel = preferredModel || 'onnx-community/whisper-large-v3-turbo'
+        const dtype = targetModel.includes('large-v3-turbo')
+          ? {
+              encoder_model: 'fp16',
+              decoder_model_merged: 'q4'
+            }
+          : 'fp32'
+        return {
+          device: 'webgpu',
+          model: targetModel,
+          dtype
+        }
+      }
+    } catch (e: any) {
+      self.postMessage({
+        type: 'log',
+        message: `[STT Worker] WebGPU adapter request failed (${e.message}), falling back to WASM`
+      })
+    }
   }
 
+  return {
+    device: 'wasm',
+    model: preferredModel || 'onnx-community/whisper-tiny.en',
+    dtype: 'q8'
+  }
+}
+
+let transcriber: any = null
+let currentModel = ''
+let currentDevice = 'wasm'
+let isInitializing = false
+
+async function initPipeline(preferredModel?: string) {
   isInitializing = true
-  currentModel = modelName
+  const config = await detectDeviceAndModel(preferredModel)
+  currentModel = config.model
+  currentDevice = config.device
+
+  self.postMessage({
+    type: 'log',
+    message: `[STT Worker] Initializing model: ${currentModel} on device: ${currentDevice.toUpperCase()}`
+  })
   self.postMessage({ type: 'status', status: 'loading', model: currentModel, percent: 0 })
 
   try {
-    transcriber = await pipeline('automatic-speech-recognition', modelName, {
+    const pipelineOptions: any = {
+      device: currentDevice,
       progress_callback: (p: any) => {
         if (p.status === 'progress') {
           self.postMessage({
@@ -31,18 +77,32 @@ async function initPipeline(modelName: string = 'Xenova/whisper-base.en') {
           })
         }
       }
-    })
+    }
+
+    if (config.dtype) {
+      pipelineOptions.dtype = config.dtype
+    }
+
+    transcriber = await pipeline('automatic-speech-recognition', currentModel, pipelineOptions)
 
     isInitializing = false
-    self.postMessage({ type: 'status', status: 'ready', model: currentModel })
+    self.postMessage({
+      type: 'log',
+      message: `[STT Worker] ${currentModel} READY on ${currentDevice.toUpperCase()}`
+    })
+    self.postMessage({ type: 'status', status: 'ready', model: currentModel, device: currentDevice })
   } catch (err: any) {
     isInitializing = false
-    console.error('[STT Worker] Failed to load Whisper pipeline:', err)
+    console.error('[STT Worker] Failed to load pipeline:', err)
+    self.postMessage({
+      type: 'log',
+      message: `[STT Worker Error] Failed to initialize: ${err.message || err}`
+    })
     self.postMessage({
       type: 'status',
       status: 'error',
       model: currentModel,
-      error: err.message || 'Failed to download or initialize Whisper model'
+      error: err.message || 'Failed to initialize Whisper model'
     })
   }
 }
@@ -51,7 +111,7 @@ self.onmessage = async (event: MessageEvent) => {
   const { type, model, audio, id } = event.data
 
   if (type === 'init') {
-    await initPipeline(model || 'Xenova/whisper-base.en')
+    await initPipeline(model)
     return
   }
 
@@ -72,15 +132,24 @@ self.onmessage = async (event: MessageEvent) => {
 
     try {
       const startTime = performance.now()
+      self.postMessage({
+        type: 'log',
+        message: `[STT Worker] Running Whisper inference on ${audio.length} samples (${(audio.length / 16000).toFixed(1)}s)...`
+      })
+
+      // For rolling short audio (<30s), do not specify chunk_length_s/stride_length_s as it causes Transformers.js to drop short slices
       const output = await transcriber(audio, {
         language: 'english',
-        task: 'transcribe',
-        chunk_length_s: 30,
-        stride_length_s: 5
+        task: 'transcribe'
       })
 
       const durationMs = Math.round(performance.now() - startTime)
       const text = (output?.text || '').trim()
+
+      self.postMessage({
+        type: 'log',
+        message: `[STT Worker] Finished in ${durationMs}ms. Text: "${text}"`
+      })
 
       self.postMessage({
         type: 'transcription',
@@ -91,6 +160,10 @@ self.onmessage = async (event: MessageEvent) => {
     } catch (err: any) {
       console.error('[STT Worker] Transcription error:', err)
       self.postMessage({
+        type: 'log',
+        message: `[STT Worker Error] ${err.message || err}`
+      })
+      self.postMessage({
         type: 'transcription',
         id,
         text: '',
@@ -100,5 +173,5 @@ self.onmessage = async (event: MessageEvent) => {
   }
 }
 
-// Auto-initiate loading of whisper-base.en on worker spawn
-initPipeline('Xenova/whisper-base.en')
+// Auto-initiate detection and loading on worker spawn
+initPipeline()

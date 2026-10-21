@@ -19,6 +19,10 @@ import {
   ApiClientConfig
 } from './apiProxyClient'
 
+// Enable unthrottled WebGPU hardware acceleration in Chromium
+app.commandLine.appendSwitch('enable-unsafe-webgpu')
+app.commandLine.appendSwitch('enable-gpu-rasterization')
+
 // 1. Register custom protocol 'copilot://'
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
@@ -127,6 +131,16 @@ function setupIpcHandlers(): void {
     if (token) {
       setApiConfig({ authToken: token })
     }
+  })
+
+  // Log forwarding from Renderer to Terminal
+  ipcMain.on('app:log', (_event, message: string) => {
+    console.log(`[Renderer] ${message}`)
+  })
+
+  // Open detached DevTools
+  ipcMain.on('app:open-devtools', () => {
+    mainWindow?.webContents.openDevTools({ mode: 'detach' })
   })
 }
 
