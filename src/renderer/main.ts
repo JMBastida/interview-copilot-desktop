@@ -15,6 +15,7 @@ let audioContext: AudioContext | null = null
 let mediaStream: MediaStream | null = null
 const ringBuffer = new AudioRingBuffer(16000, 60)
 let sttWorker: Worker | null = null
+let activeSttLabel = 'STT: Ready'
 let isAudioActive = false
 let isSolving = false
 let streamedResponseText = ''
@@ -67,6 +68,66 @@ const btnCaptureClipboard = document.getElementById('btn-capture-clipboard') as 
 const btnClearCode = document.getElementById('btn-clear-code') as HTMLButtonElement
 const codeBox = document.getElementById('code-box') as HTMLElement
 const codeLangBadge = document.getElementById('code-lang-badge') as HTMLSpanElement
+
+const btnDevTools = document.getElementById('btn-devtools') as HTMLButtonElement
+const btnToggleLogs = document.getElementById('btn-toggle-logs') as HTMLButtonElement
+const btnCopyLogs = document.getElementById('btn-copy-logs') as HTMLButtonElement
+const debugLogBox = document.getElementById('debug-log-box') as HTMLDivElement
+const debugLogEntries = document.getElementById('debug-log-entries') as HTMLDivElement
+
+const debugLogs: string[] = []
+
+function addDebugLog(msg: string, level: 'info' | 'success' | 'warn' | 'error' = 'info'): void {
+  const time = new Date().toLocaleTimeString()
+  const formatted = `[${time}] ${msg}`
+  debugLogs.push(formatted)
+  if (debugLogs.length > 50) debugLogs.shift()
+
+  // Forward to terminal via Electron IPC
+  try {
+    window.electronAPI.log(msg)
+  } catch {}
+
+  // Render on HUD UI
+  if (debugLogEntries) {
+    const item = document.createElement('div')
+    item.className = `debug-log-item ${level}`
+    item.textContent = formatted
+    debugLogEntries.appendChild(item)
+    while (debugLogEntries.children.length > 50) {
+      debugLogEntries.removeChild(debugLogEntries.firstChild!)
+    }
+    debugLogEntries.scrollTop = debugLogEntries.scrollHeight
+  }
+}
+
+/**
+ * Normalizes Float32Array audio amplitude so Whisper receives clear spectrogram features
+ * even when the source (Spotify/video) is playing at low or moderate system volume.
+ */
+function normalizeAudio(samples: Float32Array): Float32Array {
+  let max = 0
+  for (let i = 0; i < samples.length; i++) {
+    const abs = Math.abs(samples[i])
+    if (abs > max) max = abs
+  }
+
+  // Noise gate: if peak is below 0.005, do not amplify ambient digital noise/hiss
+  if (max < 0.005) {
+    return samples
+  }
+
+  if (max < 0.7) {
+    const scale = 0.8 / max
+    const normalized = new Float32Array(samples.length)
+    for (let i = 0; i < samples.length; i++) {
+      normalized[i] = samples[i] * scale
+    }
+    return normalized
+  }
+
+  return samples
+}
 
 const solutionContainer = document.getElementById('solution-container') as HTMLDivElement
 const solutionStatus = document.getElementById('solution-status') as HTMLSpanElement
@@ -122,8 +183,11 @@ async function startAudioCapture(): Promise<void> {
       ringBuffer.write(channelData)
     }
 
+    const gainNode = audioContext.createGain()
+    gainNode.gain.value = 0 // Mute monitor output to prevent loopback feedback
     sourceNode.connect(processor)
-    processor.connect(audioContext.destination)
+    processor.connect(gainNode)
+    gainNode.connect(audioContext.destination)
 
     isAudioActive = true
     btnStartAudio.textContent = 'Stop Audio'
@@ -141,7 +205,24 @@ async function startAudioCapture(): Promise<void> {
     btnStartAudio.textContent = 'Capture Output Audio'
     chipAudio.className = 'chip error'
     labelAudio.textContent = 'Audio: Failed/Denied'
-    alert(`System audio capture could not start: ${err.message}`)
+
+    try {
+      const status = await window.electronAPI.getLoopbackStatus()
+      if (status?.platform === 'darwin' && status?.screenAccess !== 'granted') {
+        alert(
+          'macOS Screen & Audio Permission Required:\n\n' +
+            '1. Open System Settings → Privacy & Security → Screen & System Audio Recording (or Screen Recording).\n' +
+            '2. Find "Electron" in the list and turn its toggle ON.\n' +
+            '3. Click "Quit & Reopen" when prompted (or restart "npm run dev").\n\n' +
+            '(Note: In dev mode, the app runs under the "Electron" binary. Once packaged into an installer, it will show as your application name).'
+        )
+        return
+      }
+    } catch {
+      // ignore status probe fallback
+    }
+
+    alert(`System audio capture could not start: ${err.message || 'Permission denied'}`)
   }
 }
 
@@ -155,6 +236,7 @@ function stopAudioCapture(): void {
     audioContext = null
   }
   isAudioActive = false
+  isTranscribing = false
   btnStartAudio.textContent = 'Capture Output Audio'
   chipAudio.className = 'chip'
   labelAudio.textContent = 'Audio: Inactive'
@@ -178,16 +260,30 @@ function startVuMeterLoop(): void {
   requestAnimationFrame(startVuMeterLoop)
 }
 
-// Periodic STT trigger loop (every 4 seconds if voice activity detected)
+// Periodic STT trigger loop (checks every 500ms; triggers if >= 3s elapsed, worker not busy, and speech detected)
 let lastTranscribeTime = 0
+let lastAudioStateLog = 0
+let isTranscribing = false
+
 function startSttPollingLoop(): void {
   if (!isAudioActive) return
 
   const now = Date.now()
-  if (now - lastTranscribeTime > 4000 && ringBuffer.isSpeaking()) {
-    lastTranscribeTime = now
-    const recentAudio = ringBuffer.getRecentWindow(10) // last 10 seconds of speech
-    if (sttWorker && recentAudio.length > 0) {
+  if (now - lastAudioStateLog >= 4000) {
+    lastAudioStateLog = now
+    const energy = ringBuffer.getEnergy()
+    addDebugLog(`[Audio State] Energy: ${(energy * 100).toFixed(0)}%, isSpeaking: ${ringBuffer.isSpeaking()}`, 'info')
+  }
+
+  if (now - lastTranscribeTime >= 3000 && !isTranscribing && ringBuffer.isSpeaking()) {
+    const rawAudio = ringBuffer.getRecentWindow(6) // 6-second rolling window
+    if (sttWorker && rawAudio.length > 0) {
+      const recentAudio = normalizeAudio(rawAudio)
+      isTranscribing = true
+      lastTranscribeTime = now
+      chipStt.className = 'chip active'
+      labelStt.textContent = 'STT: Transcribing...'
+      addDebugLog(`[STT] Sending ${recentAudio.length} samples (${(recentAudio.length / 16000).toFixed(1)}s) to Whisper...`, 'info')
       sttWorker.postMessage({
         type: 'transcribe',
         audio: recentAudio,
@@ -196,57 +292,98 @@ function startSttPollingLoop(): void {
     }
   }
 
-  setTimeout(startSttPollingLoop, 1000)
+  setTimeout(startSttPollingLoop, 500)
 }
 
 // --- STT Web Worker Initialization ---
 function initSttWorker(): void {
   try {
+    addDebugLog('[STT] Initializing Whisper Web Worker...', 'info')
     sttWorker = new Worker(new URL('./audio/stt.worker.ts', import.meta.url), {
       type: 'module'
     })
 
     sttWorker.onmessage = (event) => {
-      const { type, status, model, percent, text, durationMs, error } = event.data
+      const { type, status, model, percent, file, message, text, durationMs, error } = event.data
+
+      if (type === 'log') {
+        addDebugLog(message || '', 'info')
+      }
 
       if (type === 'status') {
         if (status === 'loading') {
           chipStt.className = 'chip active'
           labelStt.textContent = percent ? `STT: Loading (${percent}%)` : 'STT: Downloading Model...'
+          addDebugLog(`[STT Model] Loading (${percent || 0}%)${file ? ' - ' + file : ''}`, 'info')
         } else if (status === 'ready') {
           chipStt.className = 'chip ready'
-          const shortModel = model.split('/')[1] || model
-          labelStt.textContent = `STT: ${shortModel} Ready`
+          const shortModel = (model || '').split('/')[1] || model
+          const devTag = event.data.device ? ` [${event.data.device.toUpperCase()}]` : ''
+          activeSttLabel = `STT: ${shortModel}${devTag}`
+          labelStt.textContent = activeSttLabel
+          addDebugLog(`[STT Model] ${shortModel} is READY on ${event.data.device ? event.data.device.toUpperCase() : 'GPU'}`, 'success')
         } else if (status === 'error') {
+          isTranscribing = false
           chipStt.className = 'chip error'
           labelStt.textContent = 'STT: Model Error'
+          addDebugLog(`[STT Model Error] ${error}`, 'error')
           console.warn('[STT] Worker reported error:', error)
         }
       }
 
       if (type === 'transcription') {
+        isTranscribing = false
+        chipStt.className = 'chip ready'
+        labelStt.textContent = activeSttLabel
         if (text && text.trim().length > 0) {
+          addDebugLog(`[STT Result] "${text}" (${durationMs}ms)`, 'success')
           appendSpokenTranscript(text.trim())
-          console.log(`[STT] Transcribed in ${durationMs}ms: "${text}"`)
+        } else {
+          addDebugLog(`[STT Result] (no speech detected in chunk, ${durationMs}ms)`, 'warn')
         }
       }
     }
-  } catch (err) {
+  } catch (err: any) {
+    isTranscribing = false
+    addDebugLog(`[STT Init Error] ${err.message || err}`, 'error')
     console.error('Failed to instantiate STT worker:', err)
     chipStt.className = 'chip error'
     labelStt.textContent = 'STT: Worker Unavailable'
   }
 }
 
-function appendSpokenTranscript(text: string): void {
-  if (!currentSpokenTranscript) {
-    currentSpokenTranscript = text
-  } else {
-    // Avoid immediate duplicate sentence appending
-    if (!currentSpokenTranscript.endsWith(text)) {
-      currentSpokenTranscript += ` ${text}`
+/**
+ * Intelligent transcript merger that detects and removes overlapping phrase tails
+ * between rolling audio windows to eliminate stutter and duplicated sentences.
+ */
+function mergeTranscript(existing: string, incoming: string): string {
+  const ex = existing.trim()
+  const inc = incoming.trim()
+  if (!ex) return inc
+  if (!inc) return ex
+
+  // If already at end or contained, avoid repeating
+  if (ex.endsWith(inc)) return ex
+
+  const exWords = ex.split(/\s+/)
+  const incWords = inc.split(/\s+/)
+
+  // Look for overlapping words (up to 12 words)
+  const maxOverlap = Math.min(exWords.length, incWords.length, 12)
+  for (let n = maxOverlap; n >= 1; n--) {
+    const exTail = exWords.slice(-n).map((w) => w.toLowerCase().replace(/[^a-z0-9]/g, '')).join(' ')
+    const incHead = incWords.slice(0, n).map((w) => w.toLowerCase().replace(/[^a-z0-9]/g, '')).join(' ')
+    if (exTail && exTail === incHead) {
+      const remainder = incWords.slice(n).join(' ')
+      return remainder ? `${ex} ${remainder}` : ex
     }
   }
+
+  return `${ex} ${inc}`
+}
+
+function appendSpokenTranscript(text: string): void {
+  currentSpokenTranscript = mergeTranscript(currentSpokenTranscript, text)
   renderTranscriptUI()
 }
 
@@ -508,6 +645,7 @@ function clearAllContext(): void {
   currentSpokenTranscript = ''
   currentClipboardText = ''
   streamedResponseText = ''
+  isTranscribing = false
   renderTranscriptUI()
   updateClipboardContext('')
   solutionContainer.innerHTML = `
@@ -588,6 +726,34 @@ function setupEventListeners(): void {
     btnPassthrough.classList.toggle('active', isPassThrough)
   })
 
+  // Open detached Chromium DevTools
+  if (btnDevTools) {
+    btnDevTools.addEventListener('click', () => {
+      window.electronAPI.openDevTools()
+      addDebugLog('[DevTools] Opened detached DevTools window', 'info')
+    })
+  }
+
+  // Toggle Diagnostic Log Drawer
+  if (btnToggleLogs && debugLogBox) {
+    btnToggleLogs.addEventListener('click', () => {
+      const isHidden = debugLogBox.style.display === 'none'
+      debugLogBox.style.display = isHidden ? 'block' : 'none'
+      btnToggleLogs.classList.toggle('active', isHidden)
+    })
+  }
+
+  // Copy Logs to Clipboard
+  if (btnCopyLogs) {
+    btnCopyLogs.addEventListener('click', () => {
+      navigator.clipboard.writeText(debugLogs.join('\n'))
+      btnCopyLogs.textContent = 'Copied!'
+      setTimeout(() => {
+        btnCopyLogs.textContent = 'Copy Logs'
+      }, 1500)
+    })
+  }
+
   // Settings Modal Controls
   btnSettings.addEventListener('click', async () => {
     const config = await window.electronAPI.getApiConfig()
@@ -655,7 +821,9 @@ function setupEventListeners(): void {
     await window.electronAPI.setApiConfig({ apiUrl, authToken })
 
     if (sttWorker) {
-      sttWorker.postMessage({ type: 'init', model: selectWhisperModel.value })
+      const selectedModel = selectWhisperModel.value === 'auto' ? undefined : selectWhisperModel.value
+      addDebugLog(`[Settings] Requesting model switch to: ${selectedModel || 'Auto-Detect'}`, 'info')
+      sttWorker.postMessage({ type: 'init', model: selectedModel })
     }
 
     const health = await window.electronAPI.checkApiHealth(apiUrl, authToken)
