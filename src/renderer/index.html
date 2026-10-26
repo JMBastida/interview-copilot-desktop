@@ -79,13 +79,12 @@
             </span>
             <div class="card-actions">
               <button id="btn-start-audio" class="small-btn">Capture Output Audio</button>
-              <button id="btn-sim-speech" class="small-btn" title="Simulate sample interviewer question">Sample Q</button>
               <button id="btn-clear-transcript" class="small-btn">Clear</button>
               <button id="btn-toggle-logs" class="small-btn" title="Toggle Real-Time Audio & STT Logs">Logs</button>
             </div>
           </div>
           <div id="transcript-box" class="transcript-box">
-            <span class="transcript-empty">Waiting for interviewer audio or press "Sample Q" to test...</span>
+            <span class="transcript-empty">Waiting for interviewer audio...</span>
           </div>
           <div id="debug-log-box" class="debug-log-box" style="display: none;">
             <div class="debug-log-header">
@@ -159,7 +158,7 @@
 
           <div class="form-group">
             <label class="form-label">Proxy API URL</label>
-            <input id="input-api-url" class="form-input" type="text" value="http://127.0.0.1:3000" />
+            <input id="input-api-url" class="form-input" type="text" value="https://interview-copilot-api-xhap.onrender.com" />
           </div>
 
           <div class="form-group">

@@ -41,23 +41,6 @@ let inFlightTurnPrompt = ''
 let inFlightTurnCode = ''
 let inFlightTurnLanguage = 'Java'
 
-// Sample interview questions for instant demo/testing
-const sampleQuestions = [
-  'Can you implement a thread-safe, high-concurrency LRU Cache in Java with O(1) get and put operations, without holding a global lock on reads?',
-  'How would you refactor this interface to use Java 21 Virtual Threads and a Semaphore for backpressure under high throughput?',
-  'What are the memory consistency guarantees of the Double-Checked Locking pattern, and why is the volatile keyword mandatory here?',
-  'Design an in-memory rate limiter supporting 10,000 RPS per tenant using token bucket algorithm with atomic primitives.'
-]
-let sampleQuestionIdx = 0
-
-// Sample Java code for quick context demo
-const sampleCodeSnippet = `public interface ConcurrentCache<K, V> {
-    V get(K key);
-    void put(K key, V value);
-    int size();
-    void evictOldest();
-}`
-
 // --- DOM Element References ---
 const btnPassthrough = document.getElementById('btn-passthrough') as HTMLButtonElement
 const btnSettings = document.getElementById('btn-settings') as HTMLButtonElement
@@ -78,7 +61,6 @@ const chipAuth = document.getElementById('chip-auth') as HTMLDivElement
 const labelAuth = document.getElementById('label-auth') as HTMLSpanElement
 
 const btnStartAudio = document.getElementById('btn-start-audio') as HTMLButtonElement
-const btnSimSpeech = document.getElementById('btn-sim-speech') as HTMLButtonElement
 const btnClearTranscript = document.getElementById('btn-clear-transcript') as HTMLButtonElement
 const transcriptBox = document.getElementById('transcript-box') as HTMLDivElement
 
@@ -447,9 +429,9 @@ function appendSpokenTranscript(text: string): void {
 function renderTranscriptUI(): void {
   if (!currentSpokenTranscript.trim()) {
     if (activeTurnNumber === 1) {
-      transcriptBox.innerHTML = '<span class="transcript-empty">Waiting for interviewer audio or press "Sample Q" to test...</span>'
+      transcriptBox.innerHTML = '<span class="transcript-empty">Waiting for interviewer audio...</span>'
     } else {
-      transcriptBox.innerHTML = `<span class="transcript-empty">Waiting for Part ${activeTurnNumber} follow-up speech (or press "Sample Q")...</span>`
+      transcriptBox.innerHTML = `<span class="transcript-empty">Waiting for Part ${activeTurnNumber} follow-up speech...</span>`
     }
   } else {
     transcriptBox.textContent = currentSpokenTranscript
@@ -691,222 +673,7 @@ function finalizeSolution(): void {
   if (cursor) cursor.remove()
 }
 
-// Intelligent fallback simulation if Proxy API backend isn't currently running
-function simulateLocalSolution(): void {
-  let simulatedMarkdown = ''
 
-  if (activeTurnNumber === 1) {
-    simulatedMarkdown = `### 💡 Part 1: High-Concurrency LRU Cache Solution (Java 21)
-
-#### 1. Core Architecture & Concurrency Strategy
-To achieve **O(1)** \`get\` and \`put\` operations without a global lock on reads:
-- Use **\`ConcurrentHashMap<K, Node<K, V>>\`** for lock-free \`O(1)\` key lookups.
-- Maintain a **concurrent doubly-linked list** with fine-grained \`ReentrantLock\` to manage LRU eviction ordering.
-- Use atomic sizes to avoid synchronization on \`size()\` queries.
-
-\`\`\`java
-package com.interview.cache;
-
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReentrantLock;
-
-public class ConcurrentLRUCache<K, V> implements ConcurrentCache<K, V> {
-    private static class Node<K, V> {
-        final K key;
-        volatile V value;
-        Node<K, V> prev;
-        Node<K, V> next;
-
-        Node(K key, V value) {
-            this.key = key;
-            this.value = value;
-        }
-    }
-
-    private final int capacity;
-    private final ConcurrentHashMap<K, Node<K, V>> map;
-    private final Node<K, V> head;
-    private final Node<K, V> tail;
-    private final ReentrantLock listLock = new ReentrantLock();
-    private final AtomicInteger currentSize = new AtomicInteger(0);
-
-    public ConcurrentLRUCache(int capacity) {
-        if (capacity <= 0) throw new IllegalArgumentException("Capacity must be > 0");
-        this.capacity = capacity;
-        this.map = new ConcurrentHashMap<>(capacity);
-        this.head = new Node<>(null, null);
-        this.tail = new Node<>(null, null);
-        head.next = tail;
-        tail.prev = head;
-    }
-
-    @Override
-    public V get(K key) {
-        Node<K, V> node = map.get(key);
-        if (node == null) return null;
-
-        // Try to record read access; drop if lock is contended to avoid slowing reads
-        if (listLock.tryLock()) {
-            try {
-                moveToHead(node);
-            } finally {
-                listLock.unlock();
-            }
-        }
-        return node.value;
-    }
-
-    @Override
-    public void put(K key, V value) {
-        Node<K, V> existing = map.get(key);
-        if (existing != null) {
-            existing.value = value;
-            listLock.lock();
-            try {
-                moveToHead(existing);
-            } finally {
-                listLock.unlock();
-            }
-            return;
-        }
-
-        Node<K, V> newNode = new Node<>(key, value);
-        if (map.putIfAbsent(key, newNode) == null) {
-            listLock.lock();
-            try {
-                addHead(newNode);
-                if (currentSize.incrementAndGet() > capacity) {
-                    evictOldestInternal();
-                }
-            } finally {
-                listLock.unlock();
-            }
-        }
-    }
-
-    private void moveToHead(Node<K, V> node) {
-        removeNode(node);
-        addHead(node);
-    }
-
-    private void addHead(Node<K, V> node) {
-        node.next = head.next;
-        node.prev = head;
-        head.next.prev = node;
-        head.next = node;
-    }
-
-    private void removeNode(Node<K, V> node) {
-        if (node.prev != null) node.prev.next = node.next;
-        if (node.next != null) node.next.prev = node.prev;
-    }
-
-    private void evictOldestInternal() {
-        Node<K, V> oldest = tail.prev;
-        if (oldest != head && oldest != null) {
-            removeNode(oldest);
-            map.remove(oldest.key);
-            currentSize.decrementAndGet();
-        }
-    }
-
-    @Override
-    public int size() {
-        return currentSize.get();
-    }
-
-    @Override
-    public void evictOldest() {
-        listLock.lock();
-        try {
-            evictOldestInternal();
-        } finally {
-            listLock.unlock();
-        }
-    }
-}
-\`\`\`
-
-#### 2. Complexity Analysis
-- **Time Complexity**:
-  - \`get(key)\`: **O(1)** average lookup. \`tryLock()\` ensures reads never block under contention.
-  - \`put(key, val)\`: **O(1)** amortized with synchronized list mutation.
-- **Space Complexity**: **O(N)** where $N \\le \\text{capacity}$.
-`
-  } else {
-    // Follow-up simulation (Part 2+: Virtual Threads & Semaphore Backpressure)
-    simulatedMarkdown = `### 💡 Part ${activeTurnNumber}: Follow-Up - Java 21 Virtual Threads & Semaphore Backpressure
-
-#### 1. Architectural Evolution (Building on Part 1)
-Adapting the LRU Cache from Part 1 for **massive throughput (100k+ concurrent requests)**:
-- Utilize **Java 21 Virtual Threads** (\`Executors.newVirtualThreadPerTaskExecutor()\`) for zero-overhead lightweight thread dispatch.
-- Wrap mutations with a **\`Semaphore\`** for backpressure throttling so slow downstreams or cache evictions do not saturate heap memory or pin carrier threads.
-- Eliminate synchronized blocks entirely to prevent carrier-thread pinning during I/O.
-
-\`\`\`java
-package com.interview.cache;
-
-import java.util.concurrent.*;
-
-public class VirtualThreadThrottledCacheService<K, V> implements AutoCloseable {
-    private final ConcurrentLRUCache<K, V> cache;
-    private final ExecutorService virtualExecutor;
-    private final Semaphore backpressurePermits;
-
-    public VirtualThreadThrottledCacheService(int capacity, int maxConcurrentOps) {
-        this.cache = new ConcurrentLRUCache<>(capacity);
-        this.virtualExecutor = Executors.newVirtualThreadPerTaskExecutor();
-        this.backpressurePermits = new Semaphore(maxConcurrentOps, true);
-    }
-
-    public CompletableFuture<V> asyncGet(K key) {
-        return CompletableFuture.supplyAsync(() -> cache.get(key), virtualExecutor);
-    }
-
-    public CompletableFuture<Void> asyncPutWithBackpressure(K key, V value, long timeoutMs) {
-        return CompletableFuture.runAsync(() -> {
-            try {
-                if (!backpressurePermits.tryAcquire(timeoutMs, TimeUnit.MILLISECONDS)) {
-                    throw new RejectedExecutionException("Cache backpressure threshold reached: acquisition timed out.");
-                }
-                try {
-                    cache.put(key, value);
-                } finally {
-                    backpressurePermits.release();
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new CompletionException(e);
-            }
-        }, virtualExecutor);
-    }
-
-    @Override
-    public void close() {
-        virtualExecutor.close(); // Java 21 auto-shutdown awaiting tasks
-    }
-}
-\`\`\`
-
-#### 2. What to Say to the Interviewer
-- *"In Java 21, Virtual Threads are mounted onto Carrier Threads. Avoid synchronized blocks to prevent carrier thread pinning—ReentrantLock and Semaphore allow the virtual thread to unmount cleanly while waiting for permits."*
-`
-  }
-
-  // Stream simulated tokens smoothly
-  let charIdx = 0
-  const streamInterval = setInterval(() => {
-    if (charIdx >= simulatedMarkdown.length) {
-      clearInterval(streamInterval)
-      finalizeSolution()
-      return
-    }
-    const nextChunk = simulatedMarkdown.slice(charIdx, charIdx + 20)
-    charIdx += 20
-    renderMarkdownStream(nextChunk)
-  }, 16)
-}
 
 // --- Clear Context / Reset Topic ---
 function clearAllContext(): void {
@@ -940,8 +707,9 @@ async function pollProxyHealth(): Promise<void> {
       chipProxy.className = 'chip ready'
       labelProxy.textContent = `Proxy: ${res.latencyMs}ms`
     } else {
-      chipProxy.className = 'chip error'
-      labelProxy.textContent = `Proxy: ${res.status}`
+      const isStarting = res.status.includes('Starting') || res.status.includes('Cold Boot')
+      chipProxy.className = isStarting ? 'chip active' : 'chip error'
+      labelProxy.textContent = isStarting ? 'Proxy: Waking up...' : `Proxy: ${res.status}`
     }
   } catch {
     chipProxy.className = 'chip error'
@@ -954,13 +722,6 @@ function setupEventListeners(): void {
   // Audio controls
   btnStartAudio.addEventListener('click', startAudioCapture)
 
-  btnSimSpeech.addEventListener('click', () => {
-    const turnIndex = Math.min(activeTurnNumber - 1, sampleQuestions.length - 1)
-    const sample = sampleQuestions[turnIndex]
-    appendSpokenTranscript(sample)
-    addDebugLog(`[Sim Speech] Loaded Part ${activeTurnNumber} question prompt`, 'info')
-  })
-
   btnClearTranscript.addEventListener('click', () => {
     currentSpokenTranscript = ''
     renderTranscriptUI()
@@ -971,8 +732,8 @@ function setupEventListeners(): void {
     try {
       const text = await navigator.clipboard.readText()
       updateClipboardContext(text, 'java')
-    } catch {
-      updateClipboardContext(sampleCodeSnippet, 'java')
+    } catch (err: any) {
+      addDebugLog(`[Clipboard] Failed to read clipboard: ${err.message || err}`, 'warn')
     }
   })
 
@@ -1165,15 +926,38 @@ function setupEventListeners(): void {
 
   window.electronAPI.onStreamError((errorMsg) => {
     console.warn('[Renderer] SSE Stream error:', errorMsg)
-    // If backend is not available, offer smooth simulation
+    isSolving = false
+    solutionStatus.textContent = 'ERROR'
+    solutionStatus.style.borderColor = 'var(--accent-rose)'
+    solutionStatus.style.color = 'var(--accent-rose)'
+    btnSolve.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>Retry Solve</span><span class="kbd-badge">⌘⇧⏎</span>`
+
+    const isStarting =
+      errorMsg.includes('Starting') ||
+      errorMsg.includes('Timeout') ||
+      errorMsg.includes('Cold Boot') ||
+      errorMsg.includes('Failed to fetch') ||
+      errorMsg.includes('502') ||
+      errorMsg.includes('503') ||
+      errorMsg.includes('504')
+
     solutionContainer.innerHTML = `
-      <div style="color: var(--accent-amber); font-size: 12px; margin-bottom: 8px;">
-        ⚠️ Proxy API returned: <em>${errorMsg}</em>
-      </div>
-      <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">
-        Running in offline fallback mode...
+      <div style="padding: 14px; border: 1px solid rgba(244, 63, 94, 0.3); background: rgba(244, 63, 94, 0.08); border-radius: var(--radius-sm); margin-top: 4px;">
+        <div style="color: var(--accent-rose); font-weight: 600; font-size: 12.5px; margin-bottom: 6px;">
+          ⚠️ Backend Connection Error
+        </div>
+        <p style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 10px;">
+          ${isStarting ? 'The Render backend is waking up from idle sleep (free tier takes ~30s on cold start). Please wait a few seconds and click Retry.' : `Proxy API returned: <em>${errorMsg}</em>`}
+        </p>
+        <button id="btn-retry-solve" class="small-btn" style="padding: 4px 10px; font-size: 11px; color: var(--text-primary); border-color: rgba(255,255,255,0.2);">
+          Retry Solve (⌘⇧⏎)
+        </button>
       </div>`
-    simulateLocalSolution()
+
+    const retryBtn = document.getElementById('btn-retry-solve')
+    if (retryBtn) {
+      retryBtn.onclick = () => triggerSolve()
+    }
   })
 }
 
@@ -1193,9 +977,6 @@ function bootstrap(): void {
   initSttWorker()
   pollProxyHealth()
   setInterval(pollProxyHealth, 15000)
-
-  // Seed sample code snippet initially for instant exploration
-  updateClipboardContext(sampleCodeSnippet, 'java')
 }
 
 document.addEventListener('DOMContentLoaded', bootstrap)

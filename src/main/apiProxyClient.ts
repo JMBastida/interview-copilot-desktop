@@ -22,7 +22,7 @@ export interface ApiClientConfig {
 let activeAbortController: AbortController | null = null
 
 const defaultConfig: ApiClientConfig = {
-  apiUrl: 'http://127.0.0.1:3000',
+  apiUrl: 'https://interview-copilot-api-xhap.onrender.com',
   authToken: 'super_secret_interview_copilot_token_2026'
 }
 
@@ -52,7 +52,8 @@ export async function checkApiHealth(customUrl?: string, customToken?: string): 
 
   try {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 4000)
+    // Allow up to 45s for Render free-tier cold start to wake up the container
+    const timeout = setTimeout(() => controller.abort(), 45000)
 
     const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`
     const response = await fetch(`${targetUrl}/health`, {
@@ -73,7 +74,7 @@ export async function checkApiHealth(customUrl?: string, customToken?: string): 
     }
   } catch (err: any) {
     const latencyMs = Date.now() - startTime
-    return { ok: false, latencyMs, status: err.name === 'AbortError' ? 'Timeout' : 'Offline' }
+    return { ok: false, latencyMs, status: err.name === 'AbortError' ? 'Starting (Cold Boot)' : 'Offline' }
   }
 }
 

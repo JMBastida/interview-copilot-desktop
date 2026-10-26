@@ -83,7 +83,7 @@ interview-copilot-desktop/
 
 ### 1. Prerequisites
 - **Node.js**: v20+ LTS
-- Companion Backend: `interview-copilot-api` running on port 3000 (or use built-in offline simulation mode).
+- Companion Backend: Default configured to production Render API (`https://interview-copilot-api-xhap.onrender.com`), or a local `interview-copilot-api` instance.
 
 ### 2. Install & Run
 ```bash
@@ -97,10 +97,9 @@ npm run dev
 npm run build
 ```
 
-### 3. Pairing with `interview-copilot-api`
-1. Start the proxy server:
-   ```bash
-   cd ../interview-copilot-api
-   npm run dev
-   ```
-2. Launch the desktop client (`npm run dev`). The status bar will show `Proxy: <latency>ms` in green once connected.
+### 3. Backend Connection
+The desktop client is preconfigured to connect directly to the hosted Render service:
+- **Default API URL**: `https://interview-copilot-api-xhap.onrender.com`
+- **Render Free Tier**: On initial boot after idle sleep, container startup takes ~30–45s. The HUD proxy indicator will show `Proxy: Waking up...` until active.
+- To point to a local backend instead, open Settings in the HUD and change the API URL to `http://localhost:3000`.
+
