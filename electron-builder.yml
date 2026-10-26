@@ -1,6 +1,6 @@
 appId: com.interviewcopilot.desktop
 productName: Interview Copilot
-artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+artifactName: Interview-Copilot-${version}-${os}-${arch}.${ext}
 
 directories:
   output: dist
