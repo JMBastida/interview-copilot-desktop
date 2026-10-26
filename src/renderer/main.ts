@@ -932,6 +932,12 @@ function setupEventListeners(): void {
     solutionStatus.style.color = 'var(--accent-rose)'
     btnSolve.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>Retry Solve</span><span class="kbd-badge">⌘⇧⏎</span>`
 
+    const isNoCredits =
+      errorMsg.includes('402') ||
+      errorMsg.includes('Insufficient credits') ||
+      errorMsg.includes('INSUFFICIENT_CREDITS') ||
+      errorMsg.includes('No dispones de créditos')
+
     const isStarting =
       errorMsg.includes('Starting') ||
       errorMsg.includes('Timeout') ||
@@ -940,6 +946,22 @@ function setupEventListeners(): void {
       errorMsg.includes('502') ||
       errorMsg.includes('503') ||
       errorMsg.includes('504')
+
+    if (isNoCredits) {
+      solutionContainer.innerHTML = `
+        <div style="padding: 14px; border: 1px solid rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.08); border-radius: var(--radius-sm); margin-top: 4px;">
+          <div style="color: var(--accent-amber); font-weight: 600; font-size: 12.5px; margin-bottom: 6px;">
+            💳 Sin Consultas Disponibles (Pase Requerido)
+          </div>
+          <p style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px;">
+            Has agotado tus consultas disponibles. Para desbloquear el asistente en vivo adquiere un pase de entrevista de pago único en tu panel web.
+          </p>
+          <a href="https://interview-copilot-web.onrender.com/dashboard#planes" target="_blank" rel="noreferrer" class="small-btn" style="display: inline-block; text-decoration: none; padding: 6px 12px; font-size: 11px; color: #07090e; background: var(--accent-emerald); font-weight: 700; border-radius: 4px;">
+            ⚡ Adquirir Pase en la Web
+          </a>
+        </div>`
+      return
+    }
 
     solutionContainer.innerHTML = `
       <div style="padding: 14px; border: 1px solid rgba(244, 63, 94, 0.3); background: rgba(244, 63, 94, 0.08); border-radius: var(--radius-sm); margin-top: 4px;">
