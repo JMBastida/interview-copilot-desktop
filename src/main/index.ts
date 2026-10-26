@@ -177,6 +177,25 @@ async function initializeApp(): Promise<void> {
   } else {
     await mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  // Start background keep-alive heartbeat to maintain API warm
+  startKeepAliveHeartbeat()
+}
+
+// Background keep-alive: pings backend /health every 10 min (Render sleeps at 15m)
+let keepAliveTimer: NodeJS.Timeout | null = null
+
+function startKeepAliveHeartbeat(): void {
+  setTimeout(() => {
+    checkApiHealth().catch(() => {})
+  }, 3000)
+
+  keepAliveTimer = setInterval(() => {
+    console.log('[Main Keep-Alive] Pinging backend /health to keep instance warm...')
+    checkApiHealth().catch((err) => {
+      console.warn('[Main Keep-Alive] Ping failed:', err)
+    })
+  }, 10 * 60 * 1000)
 }
 
 app.whenReady().then(initializeApp)
@@ -198,6 +217,7 @@ app.on('second-instance', (_event, commandLine) => {
 })
 
 app.on('will-quit', () => {
+  if (keepAliveTimer) clearInterval(keepAliveTimer)
   unregisterShortcuts()
   abortActiveStream()
 })
