@@ -12,12 +12,12 @@ import {
 // Firebase Public Client Configuration
 // Can be customized via Vite environment variables or defaults
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyDemoPublicKeyForInterviewCopilot2026',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'interview-copilot-auth.firebaseapp.com',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'interview-copilot-auth',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'interview-copilot-auth.appspot.com',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '1234567890',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:1234567890:web:abcdef123456'
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyAJjchX1rID4BmkYSK_vtaNF9Ys-G2fUn8',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'interview-copilot-cd11d.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'interview-copilot-cd11d',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'interview-copilot-cd11d.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '855398255680',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:855398255680:web:98b8a40d6c983b43c6e3a5'
 }
 
 const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp()
