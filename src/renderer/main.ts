@@ -464,7 +464,7 @@ function renderTurnUI(): void {
       const pill = document.createElement('button')
       const isSelected = viewingTurnNumber === turn.turnNumber
       pill.className = `turn-pill completed ${isSelected ? 'active' : ''}`
-      pill.textContent = `Part ${turn.turnNumber} ✓`
+      pill.textContent = `Part ${turn.turnNumber}`
       pill.title = `Review solution for Part ${turn.turnNumber}:\n"${turn.spokenPrompt.slice(0, 60)}..."`
       pill.onclick = (e) => {
         e.stopPropagation()
@@ -508,7 +508,13 @@ function showTurnSolution(turnNum: number): void {
     } else {
       solutionContainer.innerHTML = `
         <div class="solution-empty">
-          <div class="empty-icon">💡</div>
+          <div class="empty-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M9 18h6"/>
+              <path d="M10 22h4"/>
+              <path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"/>
+            </svg>
+          </div>
           <p>Ready for <strong>Part ${activeTurnNumber} (Follow-Up)</strong>.</p>
           <p style="font-size: 11px; color: var(--text-muted); max-width: 340px; text-align: center;">
             Interviewer follow-up speech is captured above. Prior ${completedTurns.length} part(s) are stored in conversational context. Press <strong>⌘⇧⏎</strong> to solve.
@@ -692,7 +698,13 @@ function clearAllContext(): void {
   updateClipboardContext('')
   solutionContainer.innerHTML = `
     <div class="solution-empty">
-      <div class="empty-icon">💡</div>
+      <div class="empty-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M9 18h6"/>
+          <path d="M10 22h4"/>
+          <path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"/>
+        </svg>
+      </div>
       <p>Ready. Press <strong>⌘⇧⏎</strong> or click "Solve Question" below to stream live Java/coding solutions.</p>
     </div>`
   solutionStatus.style.display = 'none'
@@ -950,14 +962,16 @@ function setupEventListeners(): void {
     if (isNoCredits) {
       solutionContainer.innerHTML = `
         <div style="padding: 14px; border: 1px solid rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.08); border-radius: var(--radius-sm); margin-top: 4px;">
-          <div style="color: var(--accent-amber); font-weight: 600; font-size: 12.5px; margin-bottom: 6px;">
-            💳 Sin Consultas Disponibles (Pase Requerido)
+          <div style="color: var(--accent-amber); font-weight: 600; font-size: 12.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            No Queries Available (Interview Pass Required)
           </div>
           <p style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px;">
-            Has agotado tus consultas disponibles. Para desbloquear el asistente en vivo adquiere un pase de entrevista de pago único en tu panel web.
+            You have used all available AI queries. Unlock live coding assistance by obtaining a one-time interview pass from your web dashboard.
           </p>
-          <a href="https://interview-copilot-web.onrender.com/dashboard#planes" target="_blank" rel="noreferrer" class="small-btn" style="display: inline-block; text-decoration: none; padding: 6px 12px; font-size: 11px; color: #07090e; background: var(--accent-emerald); font-weight: 700; border-radius: 4px;">
-            ⚡ Adquirir Pase en la Web
+          <a href="https://interview-copilot-web.onrender.com/dashboard#planes" target="_blank" rel="noreferrer" class="small-btn" style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none; padding: 6px 12px; font-size: 11px; color: #07090e; background: var(--accent-emerald); font-weight: 700; border-radius: 4px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Get Pass on Web
           </a>
         </div>`
       return
@@ -965,8 +979,9 @@ function setupEventListeners(): void {
 
     solutionContainer.innerHTML = `
       <div style="padding: 14px; border: 1px solid rgba(244, 63, 94, 0.3); background: rgba(244, 63, 94, 0.08); border-radius: var(--radius-sm); margin-top: 4px;">
-        <div style="color: var(--accent-rose); font-weight: 600; font-size: 12.5px; margin-bottom: 6px;">
-          ⚠️ Backend Connection Error
+        <div style="color: var(--accent-rose); font-weight: 600; font-size: 12.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Backend Connection Error
         </div>
         <p style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 10px;">
           ${isStarting ? 'The Render backend is waking up from idle sleep (free tier takes ~30s on cold start). Please wait a few seconds and click Retry.' : `Proxy API returned: <em>${errorMsg}</em>`}
